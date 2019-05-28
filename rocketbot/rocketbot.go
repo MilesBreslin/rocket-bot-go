@@ -8,6 +8,7 @@ import (
     "encoding/json"
     "strings"
     "net/http"
+    "crypto/sha256"
 
     "github.com/gorilla/websocket"
     "gopkg.in/yaml.v2"
@@ -16,6 +17,7 @@ import (
 type state struct {
     UserId          string          `yaml:"UserId"`
     UserName        string          `yaml:"UserName"`
+    Password        string          `yaml:"Password"`
     AuthToken       string          `yaml:"AuthToken"`
     HostName        string          `yaml:"HostName"`
     HostSSL         bool            `yaml:"HostSSL"`
@@ -79,7 +81,7 @@ func init() {
     if CurrentState.HostName == "" {
         panic("HostName not set")
     }
-    if CurrentState.AuthToken == "" {
+    if CurrentState.AuthToken == "" && (CurrentState.UserName == "" || CurrentState.Password == "" ){
         panic("AuthToken not set")
     }
 
@@ -351,18 +353,38 @@ func (s *state) subscribeRooms() {
 }
 
 func (s *state) login() {
-    login := map[string] interface{} {
-        "method": "login",
-        "params": []map[string] interface{} {
-            map[string] interface{} {
-                "resume": s.AuthToken,
+    var login map[string] interface{}
+    if s.Password == "" {
+        login = map[string] interface{} {
+            "method": "login",
+            "params": []map[string] interface{} {
+                map[string] interface{} {
+                    "resume": s.Password,
+                },
             },
-        },
+        }
+    } else {
+        passhash := fmt.Sprintf("%x",sha256.Sum256([]byte(s.Password)))
+        fmt.Println("Trying "+passhash)
+        login = map[string] interface{} {
+            "method": "login",
+            "params": []map[string] interface{} {
+                map[string] interface{} {
+                    "user": map[string] interface {} {
+                        "username": s.UserName,
+                    },
+                    "password": map[string] interface{} {
+                        "digest": passhash,
+                        "algorithm": "sha-256",
+                    },
+                },
+            },
+        }
     }
 
     reply := s.runMethod(login)
-
     s.UserId = reply["result"].(map[string] interface{})["id"].(string)
+    s.AuthToken = reply["result"].(map[string] interface{})["token"].(string)
 }
 
 func (s *state) connect() {
@@ -437,6 +459,9 @@ func (s *state) SendMessage(rid string, text string) {
 
 func (msg *message) Reply(text string) {
     msg.state.SendMessage(msg.RoomId, text)
+}
+func (msg *message) GetNoMention() (string) {
+    return string(strings.ToLower(msg.Text)[len(msg.state.UserName)+2:])
 }
 
 func (s *state) GetMessage() message {
