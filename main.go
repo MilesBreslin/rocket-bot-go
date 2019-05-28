@@ -53,7 +53,7 @@ func main() {
         if msg.IsNew && msg.IsMention {
             fmt.Printf("%s-%s: %s\n",msg.RoomId, msg.UserName, msg.Text)
             textMsg := msg.Text[len(rocketbot.CurrentState.UserName)+2:]
-            if strings.HasPrefix(strings.ToLower(textMsg), "remind ") {
+            if strings.Contains(strings.ToLower(textMsg)," on ") &&  strings.Contains(strings.ToLower(textMsg)," about ") {
                 split := strings.Split(strings.ToLower(textMsg), " on ")
                 splitt := strings.Split(split[1]," about")
                 dateQuery := splitt[0]
