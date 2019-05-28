@@ -31,6 +31,7 @@ type state struct {
     resultsDel      chan string
     nextId          chan string
     messages        chan message
+    ready           chan struct{}
 }
 
 type message struct {
@@ -82,11 +83,11 @@ func init() {
         panic("AuthToken not set")
     }
 
-
+    CurrentState.init()
     go CurrentState.run()
 }
 
-func (s *state) run() {
+func (s *state) init() {
     // Init variables
     s.send = make(chan interface{}, 1024)
     s.receive = make(chan interface{}, 1024)
@@ -98,7 +99,10 @@ func (s *state) run() {
     s.results = make(map[string] chan map[string] interface{})
     s.nextId = make(chan string,0)
     s.messages = make(chan message,1024)
+    s.ready = make(chan struct{},0)
+}
 
+func (s *state) run() {
     // Set some websocket tunables
     const socketreadsizelimit = 65536
     const pingtime = 120 * time.Second
@@ -134,8 +138,8 @@ func (s *state) run() {
         s.connect()
         s.login()
         s.UserName = s.RequestUserName(s.UserId)
-        fmt.Println(s.UserName)
         s.subscribeRooms()
+        close(s.ready)
     }()
 
     // Manage Method/Subscription Ids
@@ -207,7 +211,6 @@ func (s *state) run() {
                     fmt.Println(pack)
                 }
             case "changed":
-                fmt.Println(string(raw))
                 obj := pack["fields"].(map[string]interface{})["args"].([]interface{})
                 switch pack["collection"].(string) {
                 case "stream-notify-user":
@@ -438,4 +441,8 @@ func (msg *message) Reply(text string) {
 
 func (s *state) GetMessage() message {
     return <- s.messages
+}
+
+func (s *state) WaitUntilReady() {
+    <- s.ready
 }
