@@ -24,6 +24,7 @@ type rocketCon struct {
     HostSSL         bool            `yaml:"ssl"`
     HostPort        uint16          `yaml:"port"`
     session         string
+    channels        map[string] string
     send            chan interface{}
     receive         chan interface{}
     results         map[string] chan map[string] interface{}
@@ -103,6 +104,7 @@ func (rock *rocketCon) init() (error) {
     rock.nextId = make(chan string,0)
     rock.messages = make(chan message,1024)
     rock.quit = make(chan struct{},0)
+    rock.channels = make(map[string]string)
 
     go rock.run()
 
@@ -119,6 +121,7 @@ func (rock *rocketCon) init() (error) {
     }
 
     rock.subscribeRooms()
+    rock.RefreshChannelCache()
     log.Println("Initialized successfully")
     return nil
 }
@@ -432,6 +435,25 @@ func (rock *rocketCon) RequestUserName(userid string) string {
         return ""
     }
     return m["user"].(map[string]interface{})["name"].(string)
+}
+
+func (rock *rocketCon) RefreshChannelCache() (error) {
+    message := map[string] interface{} {
+        "method": "rooms/get",
+    }
+
+    reply, err := rock.runMethod(message)
+    if err != nil {
+        return err
+    }
+    for _, val := range reply["result"].([]interface{}) {
+        if _, ok := val.(map[string]interface{})["fname"]; ok {
+            name := val.(map[string]interface{})["fname"].(string)
+            id := val.(map[string]interface{})["_id"].(string)
+            rock.channels[id] = name
+        }
+    }
+    return err
 }
 
 func (rock *rocketCon) RequestMessage(mid string) message {

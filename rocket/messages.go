@@ -57,7 +57,7 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
         }
     }
 
-    if msg.UserId == msg.rocketCon.UserId {
+    if msg.UserId == rock.UserId {
         msg.IsMe = true
     }
 
@@ -93,7 +93,13 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
         unixUp := obj["_updatedAt"].(map[string]interface{})["$date"].(float64)
         msg.UpdatedAt = time.Unix(int64(unixUp/1000),0)
     }
-    
+
+    if val, ok := rock.channels[msg.RoomId]; ok {
+        msg.RoomName = val
+    }
+
+    fmt.Println(msg.RoomName)
+
     return msg
 }
 
