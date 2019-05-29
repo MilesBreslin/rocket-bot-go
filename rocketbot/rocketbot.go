@@ -6,22 +6,22 @@ import (
     "io/ioutil"
     "time"
     "encoding/json"
-    "strings"
     "net/http"
     "crypto/sha256"
+    "errors"
 
     "github.com/gorilla/websocket"
     "gopkg.in/yaml.v2"
 )
 
-type state struct {
-    UserId          string          `yaml:"UserId"`
-    UserName        string          `yaml:"UserName"`
-    Password        string          `yaml:"Password"`
-    AuthToken       string          `yaml:"AuthToken"`
-    HostName        string          `yaml:"HostName"`
-    HostSSL         bool            `yaml:"HostSSL"`
-    HostPort        uint16          `yaml:"HostPort"`
+type rocketCon struct {
+    UserId          string
+    UserName        string          `yaml:"user"`
+    Password        string          `yaml:"password"`
+    AuthToken       string          `yaml:"authtoken"`
+    HostName        string          `yaml:"domain"`
+    HostSSL         bool            `yaml:"ssl"`
+    HostPort        uint16          `yaml:"port"`
     session         string
     send            chan interface{}
     receive         chan interface{}
@@ -33,78 +33,95 @@ type state struct {
     resultsDel      chan string
     nextId          chan string
     messages        chan message
-    ready           chan struct{}
+    quit            chan struct{}
 }
 
-type message struct {
-    IsNew           bool
-    IsMention       bool
-    IsEdited        bool
-    Id              string
-    UserName        string
-    UserId          string
-    RoomName        string
-    RoomId          string
-    Text            string
-    Reactions       map[string] []string
-    Attachments     []attachment
-    state           state
+func NewConnection(username string, password string) (rocketCon, error) {
+    var rock rocketCon
+    rock.UserName = username
+    rock.Password = password
+    rock.init()
+    return rock, nil
 }
 
-type attachment struct {
-    URL             string
+func NewConnectionAuthToken(authtoken string) (rocketCon, error) {
+    var rock rocketCon
+    rock.AuthToken = authtoken
+    rock.init()
+    return rock, nil
 }
 
-var CurrentState = state {
-    HostPort: 443,
-    HostSSL: true,
-}
-
-var filename = "rb.cfg"
-
-func init() {
+func NewConnectionConfig(filename string) (rocketCon, error) {
+    var rock rocketCon
     _, err := os.Stat(filename)
     if err != nil {
-        panic(err)
+        return rock, err
     }
 
     source, err := ioutil.ReadFile(filename)
     if err != nil {
-        panic(err)
+        return rock, err
     }
 
-    err = yaml.Unmarshal(source, &CurrentState)
+    rock.HostSSL = true
+
+    err = yaml.Unmarshal(source, &rock)
     if err != nil {
-        panic(err)
+        return rock, err
     }
 
-    if CurrentState.HostName == "" {
-        panic("HostName not set")
+    if rock.HostName == "" {
+        return rock, errors.New("HostName not set")
     }
-    if CurrentState.AuthToken == "" && (CurrentState.UserName == "" || CurrentState.Password == "" ){
-        panic("AuthToken not set")
+    if rock.AuthToken == "" && (rock.UserName == "" || rock.Password == "" ){
+        return rock, errors.New("AuthToken not set")
     }
 
-    CurrentState.init()
-    go CurrentState.run()
+    if rock.HostPort == 0 {
+        if rock.HostSSL {
+            rock.HostPort = 443
+        } else {
+            rock.HostPort = 80
+        }
+    }
+
+    err = rock.init()
+    return rock, err
 }
 
-func (s *state) init() {
+func (rock *rocketCon) init() (error) {
     // Init variables
-    s.send = make(chan interface{}, 1024)
-    s.receive = make(chan interface{}, 1024)
-    s.resultsAppend = make(chan struct {
+    rock.send = make(chan interface{}, 1024)
+    rock.receive = make(chan interface{}, 1024)
+    rock.resultsAppend = make(chan struct {
         string string
         channel chan map[string] interface{}
     },0)
-    s.resultsDel = make(chan string,1024)
-    s.results = make(map[string] chan map[string] interface{})
-    s.nextId = make(chan string,0)
-    s.messages = make(chan message,1024)
-    s.ready = make(chan struct{},0)
+    rock.resultsDel = make(chan string,1024)
+    rock.results = make(map[string] chan map[string] interface{})
+    rock.nextId = make(chan string,0)
+    rock.messages = make(chan message,1024)
+    rock.quit = make(chan struct{},0)
+
+    go rock.run()
+
+    // Send Init Messages
+    rock.connect()
+    err := rock.login()
+    if err != nil {
+        close(rock.quit)
+        return err
+    }
+
+    if rock.UserName == "" {
+        rock.UserName = rock.RequestUserName(rock.UserId)
+    }
+
+    rock.subscribeRooms()
+    return nil
 }
 
-func (s *state) run() {
+func (rock *rocketCon) run() {
     // Set some websocket tunables
     const socketreadsizelimit = 65536
     const pingtime = 120 * time.Second
@@ -112,10 +129,10 @@ func (s *state) run() {
 
     // Define Websocket URL
     var wsURL string
-    if s.HostSSL {
-        wsURL = fmt.Sprintf("wss://%s:%d/websocket", s.HostName, s.HostPort)
+    if rock.HostSSL {
+        wsURL = fmt.Sprintf("wss://%s:%d/websocket", rock.HostName, rock.HostPort)
     } else {
-        wsURL = fmt.Sprintf("ws://%s:%d/websocket", s.HostName, s.HostPort)
+        wsURL = fmt.Sprintf("ws://%s:%d/websocket", rock.HostName, rock.HostPort)
     }
 
     // Init websocket
@@ -136,21 +153,11 @@ func (s *state) run() {
     tick := time.NewTicker(pingtime)
     defer tick.Stop()
 
-    go func() {
-        s.connect()
-        s.login()
-        s.UserName = s.RequestUserName(s.UserId)
-        s.subscribeRooms()
-        close(s.ready)
-    }()
-
     // Manage Method/Subscription Ids
     go func() {
-        var i uint64
-        i=0
-        for {
+        for i := uint64(0); ; i++{
             i++
-            s.nextId <- fmt.Sprintf("%d",i)
+            rock.nextId <- fmt.Sprintf("%d",i)
         }
     }()
 
@@ -158,10 +165,10 @@ func (s *state) run() {
     go func() {
         for {
             select {
-            case addition := <- s.resultsAppend:
-                s.results[addition.string] = addition.channel
-            case remove := <- s.resultsDel:
-                delete(s.results, remove)
+            case addition := <- rock.resultsAppend:
+                rock.results[addition.string] = addition.channel
+            case remove := <- rock.resultsDel:
+                delete(rock.results, remove)
             }
         }
     }()
@@ -169,7 +176,7 @@ func (s *state) run() {
     // Send Thread
     go func() {
         for {
-            msg := <-s.send
+            msg := <-rock.send
             packet, err := json.Marshal(msg)
             err = ws.WriteMessage(websocket.TextMessage, packet)
             if err != nil {
@@ -199,12 +206,12 @@ func (s *state) run() {
         if msg, ok := pack["msg"]; ok {
             switch msg {
             case "connected":
-                s.session = pack["session"].(string)
+                rock.session = pack["session"].(string)
             case "result":
-                if channel, ok := s.results[pack["id"].(string)]; ok {
+                if channel, ok := rock.results[pack["id"].(string)]; ok {
                     channel <- pack
                 }
-                s.resultsDel <- pack["id"].(string)
+                rock.resultsDel <- pack["id"].(string)
             case "added":
                 switch pack["collection"].(string) {
                 case "users":
@@ -218,12 +225,12 @@ func (s *state) run() {
                 case "stream-notify-user":
                     switch obj[0].(string) {
                     case "inserted":
-                        s.subscribeRoom(obj[1].(map[string]interface{})["rid"].(string))
+                        rock.subscribeRoom(obj[1].(map[string]interface{})["rid"].(string))
                     }
                 case "stream-room-messages":
                     go func() {
-                        message := s.handleMessageObject(obj[0].(map[string]interface{}))
-                        s.messages <- message
+                        message := rock.handleMessageObject(obj[0].(map[string]interface{}))
+                        rock.messages <- message
                     }()
                 }
             case "ready":
@@ -232,7 +239,7 @@ func (s *state) run() {
                 pong := map[string] string {
                     "msg": "pong",
                 }
-                s.send <- pong
+                rock.send <- pong
             default:
                 fmt.Println(string(raw))
             }
@@ -240,100 +247,46 @@ func (s *state) run() {
     }
 }
 
-func (s *state) handleMessageObject(obj map[string] interface{}) message {
-    var msg message
-    msg.IsNew = true
-    _, msg.IsEdited = obj["editedAt"]
-    if msg.IsEdited {
-        msg.IsNew = false
-    }
-    msg.Id = obj["_id"].(string)
-    msg.Text = obj["msg"].(string)
-    msg.RoomId = obj["rid"].(string)
-    msg.UserId = obj["u"].(map[string] interface{})["_id"].(string)
-    msg.UserName = obj["u"].(map[string] interface{})["username"].(string)
-
-    if len(msg.Text) > len(s.UserName)+2 {
-        if string(strings.ToLower(msg.Text)[:len(s.UserName)+2]) == fmt.Sprintf("@%s ", strings.ToLower(s.UserName)) {
-            msg.IsMention = true
-        }
-    }
-
-    if _, ok := obj["unread"]; !ok {
-        msg.IsNew = false
-    }
-
-    msg.state = *s
-
-    if react, ok := obj["reactions"]; ok {
-        msg.IsNew = false
-        msg.Reactions = make(map[string][]string)
-        for emote, val := range react.(map[string]interface{}) {
-            for _, username := range val.(map[string]interface{})["usernames"].([]interface{}) {
-                msg.Reactions[emote] = append(msg.Reactions[emote], username.(string))
-            }
-        }
-    }
-
-
-    // yml, _ := yaml.Marshal(obj)
-    // fmt.Println(string(yml))
-    // yml, _ = yaml.Marshal(msg)
-    // fmt.Println(string(yml))
-    return msg
+func (rock *rocketCon) generateId() string {
+    return <-rock.nextId
 }
 
-func (s *state) generateId() string {
-    return <-s.nextId
-}
-
-func (s *state) watchResults(str string) chan map[string] interface{} {
+func (rock *rocketCon) watchResults(str string) chan map[string] interface{} {
     c := make(chan map[string] interface{})
-    s.resultsAppend <- struct {
+    rock.resultsAppend <- struct {
         string string
         channel chan map[string] interface{}
     } {string: str, channel: c}
     return c
 }
 
-func (s *state) runMethod(i map[string] interface{}) map[string] interface{} {
-    id := s.generateId()
-    i["msg"] = "method"
-    i["id"] = id
-    c := s.watchResults(id)
-    defer close(c)
-    s.send <- i
-    return <- c
-}
-
-func (s *state) subscribeRoom(rid string) {
+func (rock *rocketCon) subscribeRoom(rid string) {
     subscribeRoom := map[string] interface{}{
         "msg": "sub",
-        "id": s.generateId(),
+        "id": rock.generateId(),
         "name": "stream-room-messages",
         "params": []interface{} {
             rid,
             false,
         },
     }
-    s.send <- subscribeRoom
+    rock.send <- subscribeRoom
 }
 
-func (s *state) subscribeRooms() {
-    if s.UserId == "" {
-        fmt.Println("error: Can't subscribe to rooms if user is not known")
-        return
+func (rock *rocketCon) subscribeRooms() (error) {
+    if rock.UserId == "" {
+        return errors.New("error: Can't subscribe to rooms if user is not known")
     }
     subscriptionMonitor := map[string] interface{}{
         "msg": "sub",
-        "id": s.generateId(),
+        "id": rock.generateId(),
         "name": "stream-notify-user",
         "params": []interface{} {
-            s.UserId+"/subscriptions-changed",
+            rock.UserId+"/subscriptions-changed",
             false,
         },
     }
-    s.send <- subscriptionMonitor
+    rock.send <- subscriptionMonitor
 
     subscriptionsGet := map[string] interface{} {
         "method": "subscriptions/get",
@@ -343,96 +296,32 @@ func (s *state) subscribeRooms() {
             },
         },
     }
-    reply := s.runMethod(subscriptionsGet)
+    reply, err := rock.runMethod(subscriptionsGet)
+    if err != nil {
+        return err
+    }
 
     objects := reply["result"].(map[string] interface{})["update"].([]interface{})
 
     for index, _ := range objects {
-        s.subscribeRoom(objects[index].(map[string]interface{})["rid"].(string))
+        rock.subscribeRoom(objects[index].(map[string]interface{})["rid"].(string))
     }
+    return nil
 }
 
-func (s *state) login() {
-    var login map[string] interface{}
-    if s.Password == "" {
-        login = map[string] interface{} {
-            "method": "login",
-            "params": []map[string] interface{} {
-                map[string] interface{} {
-                    "resume": s.Password,
-                },
-            },
-        }
-    } else {
-        passhash := fmt.Sprintf("%x",sha256.Sum256([]byte(s.Password)))
-        fmt.Println("Trying "+passhash)
-        login = map[string] interface{} {
-            "method": "login",
-            "params": []map[string] interface{} {
-                map[string] interface{} {
-                    "user": map[string] interface {} {
-                        "username": s.UserName,
-                    },
-                    "password": map[string] interface{} {
-                        "digest": passhash,
-                        "algorithm": "sha-256",
-                    },
-                },
-            },
-        }
-    }
-
-    reply := s.runMethod(login)
-    s.UserId = reply["result"].(map[string] interface{})["id"].(string)
-    s.AuthToken = reply["result"].(map[string] interface{})["token"].(string)
-}
-
-func (s *state) connect() {
-    init := map[string] interface{} {
-        "msg": "connect",
-        "version": "1",
-        "support": []string{"1", "pre2", "pre1"},
-    }
-    s.send <- init
-}
-
-func (s *state) RequestUserName(userid string) string {
-    res := s.restRequest("/api/v1/users.info?userId="+userid)
-    var m map[string] interface{}
-    err := json.Unmarshal(res, &m)
-    if err != nil {
-        fmt.Println(err)
-        return ""
-    }
-    return m["user"].(map[string]interface{})["name"].(string)
-}
-
-func (s *state) RequestMessage(mid string) message {
-    var msg message
-    resp := s.restRequest("/api/v1/chat.getMessage?msgId="+mid)
-    var m map[string] interface{}
-    err := json.Unmarshal(resp, &m)
-    if err != nil {
-        fmt.Println(err)
-        return msg
-    }
-    msg = s.handleMessageObject(m["message"].(map[string] interface{}))
-    return msg
-}
-
-func (s *state) restRequest(str string) []byte{
+func (rock *rocketCon) restRequest(str string) []byte{
     // Define Websocket URL
     var httpURL string
-    if s.HostSSL {
-        httpURL = fmt.Sprintf("https://%s:%d%s", s.HostName, s.HostPort, str)
+    if rock.HostSSL {
+        httpURL = fmt.Sprintf("https://%s:%d%s", rock.HostName, rock.HostPort, str)
     } else {
-        httpURL = fmt.Sprintf("http://%s:%d%s", s.HostName, s.HostPort, str)
+        httpURL = fmt.Sprintf("http://%s:%d%s", rock.HostName, rock.HostPort, str)
     }
     // Build Request
     client := &http.Client{}
     request, _ := http.NewRequest("GET", httpURL, nil)
-    request.Header.Set("X-Auth-Token", s.AuthToken)
-    request.Header.Set("X-User-Id", s.UserId)
+    request.Header.Set("X-Auth-Token", rock.AuthToken)
+    request.Header.Set("X-User-Id", rock.UserId)
 
     // Get Request
     response, _ := client.Do(request)
@@ -443,7 +332,118 @@ func (s *state) restRequest(str string) []byte{
     return body
 }
 
-func (s *state) SendMessage(rid string, text string) {
+func (rock *rocketCon) runMethod(i map[string] interface{}) (map[string] interface{}, error) {
+    id := rock.generateId()
+    i["msg"] = "method"
+    i["id"] = id
+    c := rock.watchResults(id)
+    defer close(c)
+    rock.send <- i
+    reply := <- c
+    if _, ok := reply["error"]; ok {
+        errNo := reply["error"].(map[string] interface{})["error"].(float64)
+        errType := reply["error"].(map[string] interface{})["errorType"].(string)
+        return reply, errors.New(fmt.Sprintf("Login: %.0f %s", errNo, errType))
+    }
+    return reply, nil
+}
+
+func (rock *rocketCon) connect() {
+    init := map[string] interface{} {
+        "msg": "connect",
+        "version": "1",
+        "support": []string{"1", "pre2", "pre1"},
+    }
+    rock.send <- init
+}
+
+func (rock *rocketCon) login() error {
+    var login map[string] interface{}
+    if rock.AuthToken == "" {
+        passhash := fmt.Sprintf("%x",sha256.Sum256([]byte(rock.Password)))
+        fmt.Println("Trying "+passhash)
+        login = map[string] interface{} {
+            "method": "login",
+            "params": []map[string] interface{} {
+                map[string] interface{} {
+                    "user": map[string] interface {} {
+                        "username": rock.UserName,
+                    },
+                    "password": map[string] interface{} {
+                        "digest": passhash,
+                        "algorithm": "sha-256",
+                    },
+                },
+            },
+        }
+    } else {
+        login = map[string] interface{} {
+            "method": "login",
+            "params": []map[string] interface{} {
+                map[string] interface{} {
+                    "resume": rock.AuthToken,
+                },
+            },
+        }
+    }
+
+    reply, err := rock.runMethod(login)
+    if err != nil {
+        return err
+    }
+    rock.UserId = reply["result"].(map[string] interface{})["id"].(string)
+    rock.AuthToken = reply["result"].(map[string] interface{})["token"].(string)
+    fmt.Println(rock.UserId)
+    return nil
+}
+
+func (rock *rocketCon) GetMessage() (message, error) {
+    var msg message
+    select {
+    case msg := <- rock.messages:
+        return msg, nil
+    case <-rock.quit:
+        return msg, nil
+    }
+}
+
+func (rock *rocketCon) GetIncommingMessage() (message, error) {
+    for {
+        msg, err := rock.GetMessage()
+        if err != nil {
+            return msg, err
+        }
+        if msg.IsNew {
+            return msg, err
+        }
+    }
+}
+
+func (rock *rocketCon) RequestUserName(userid string) string {
+    res := rock.restRequest("/api/v1/users.info?userId="+userid)
+    var m map[string] interface{}
+    err := json.Unmarshal(res, &m)
+    if err != nil {
+        fmt.Println(err)
+        return ""
+    }
+    return m["user"].(map[string]interface{})["name"].(string)
+}
+
+func (rock *rocketCon) RequestMessage(mid string) message {
+    var msg message
+    resp := rock.restRequest("/api/v1/chat.getMessage?msgId="+mid)
+    var m map[string] interface{}
+    err := json.Unmarshal(resp, &m)
+    if err != nil {
+        fmt.Println(err)
+        return msg
+    }
+    msg = rock.handleMessageObject(m["message"].(map[string] interface{}))
+    return msg
+}
+
+func (rock *rocketCon) SendMessage(rid string, text string) error {
     message := map[string] interface{} {
         "method": "sendMessage",
         "params": []map[string] interface{} {
@@ -454,20 +454,6 @@ func (s *state) SendMessage(rid string, text string) {
         },
     }
 
-    s.runMethod(message)
-}
-
-func (msg *message) Reply(text string) {
-    msg.state.SendMessage(msg.RoomId, text)
-}
-func (msg *message) GetNoMention() (string) {
-    return string(strings.ToLower(msg.Text)[len(msg.state.UserName)+2:])
-}
-
-func (s *state) GetMessage() message {
-    return <- s.messages
-}
-
-func (s *state) WaitUntilReady() {
-    <- s.ready
+    _, err := rock.runMethod(message)
+    return err
 }
