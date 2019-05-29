@@ -1,4 +1,4 @@
-package rocketbot
+package rocket
 
 import (
     "os"
@@ -455,5 +455,18 @@ func (rock *rocketCon) SendMessage(rid string, text string) error {
     }
 
     _, err := rock.runMethod(message)
+    return err
+}
+
+func (rock *rocketCon) React(mid string, emoji string) error {
+    reaction := map[string] interface{} {
+        "method": "setReaction",
+        "params": []string {
+            emoji,
+            mid,
+        },
+    }
+
+    _, err := rock.runMethod(reaction)
     return err
 }
