@@ -12,11 +12,11 @@ func main() {
 
 
     for {
-        msg, err := rock.GetMessage()
+        msg, err := rock.GetIncommingMessage()
         if err != nil {
             break
         }
-        if msg.IsMention && msg.IsNew {
+        if msg.IsMention {
             msg.Reply(fmt.Sprintf("@%s %s", msg.UserName, msg.GetNoMention()))
             msg.React(":grinning:")
         }

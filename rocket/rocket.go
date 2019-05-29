@@ -9,6 +9,7 @@ import (
     "net/http"
     "crypto/sha256"
     "errors"
+    "log"
 
     "github.com/gorilla/websocket"
     "gopkg.in/yaml.v2"
@@ -118,6 +119,7 @@ func (rock *rocketCon) init() (error) {
     }
 
     rock.subscribeRooms()
+    log.Println("Initialized successfully")
     return nil
 }
 
@@ -215,10 +217,12 @@ func (rock *rocketCon) run() {
             case "added":
                 switch pack["collection"].(string) {
                 case "users":
-                    fmt.Println(pack)
+                    break
                 default:
                     fmt.Println(pack)
                 }
+            case "updated":
+                break
             case "changed":
                 obj := pack["fields"].(map[string]interface{})["args"].([]interface{})
                 switch pack["collection"].(string) {
@@ -245,6 +249,7 @@ func (rock *rocketCon) run() {
             }
         }
     }
+    close(rock.quit)
 }
 
 func (rock *rocketCon) generateId() string {
@@ -393,7 +398,6 @@ func (rock *rocketCon) login() error {
     }
     rock.UserId = reply["result"].(map[string] interface{})["id"].(string)
     rock.AuthToken = reply["result"].(map[string] interface{})["token"].(string)
-    fmt.Println(rock.UserId)
     return nil
 }
 
