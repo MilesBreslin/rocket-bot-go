@@ -13,55 +13,63 @@ import (
 
     "fmt"
     "time"
-    "gopkg.in/yaml.v2"
+    "math/rand"
+    "strings"
 )
 
 func main() {
-    // New Connection returning a rocketConnection object
-    // rb.cfg is backwards compatible with Kimani's rocket-bot-python
-    // Also see NewConnectionPassword and NewConnectionAuthToken
+    rand.Seed(time.Now().Unix())
     rock, err := rocket.NewConnectionConfig("rb.cfg")
-
-    rock.UserTemporaryStatus(rocket.STATUS_AWAY)
 
     // If there was an error connecting, panic
     if err != nil {
         panic(err)
     }
+    customEmojis, _ := rock.ListCustomEmojis()
+    emojis := append(rocket.BUILTIN_EMOJIS, customEmojis...)
+    totalemojis := len(emojis)
 
     for {
         // Wait for a new message to come in
-        msg, err := rock.GetNewMessage()
+        msg, err := rock.GetMessage()
 
         // If error, quit because that means the connection probably quit
         if err != nil {
             break
         }
 
-        // Print the message structure in a user-legible format
-        // yml is []byte type, _ means send the returned error to void
-        yml, _ := yaml.Marshal(msg)
-        fmt.Println(string(yml))
-
         // If begins with '@Username ' or is in private chat
-        if msg.IsAddressedToMe || msg.RoomName == "" {
-            // Reply to the message with a formatted string
-            reply, err := msg.Reply(fmt.Sprintf("@%s %s %d", msg.UserName, msg.GetNotAddressedText(), 0))
-
-            // If no error replying, take the reply and edit it to count to 10 asynchronously
-            if err == nil {
-                go func() {
-                    msg.SetIsTyping(true)
-                    for i := 1; i<=10; i++ {
+        if msg.IsNew && msg.IsAddressedToMe && strings.Contains(strings.ToLower(msg.GetNotAddressedText()), " _emoji_ ") {
+            fmt.Println(msg.UserName)
+            go func() {
+                complete := make([]int,0)
+                for len(complete)<len(emojis)/4 { 
+                    if len(complete) < 10 {
+                        time.Sleep(time.Millisecond*250)
+                    } else {
                         time.Sleep(time.Second)
-                        reply.EditText(fmt.Sprintf("@%s %s %d", msg.UserName, msg.GetNotAddressedText(),i))
                     }
-                    msg.SetIsTyping(false)
-                }()
-            }
-
-            // React to the initial message
-            msg.React(":grinning:")
+                    i := rand.Intn(totalemojis)
+                    for invalid(i, complete) {
+                        i = rand.Intn(totalemojis)
+                    }
+                    err := msg.React(emojis[i])
+                    if err == nil {
+                        complete = append(complete, i)
+                        fmt.Println(len(complete))
+                    }
+                }
+            }()
         }
     }
 }
+
+func invalid(i int, arr []int) bool {
+    for _, val := range arr {
+        if i == val {
+            return true
+        }
+    }
+    return false
+}
+>>>>>>> Emoji bot
