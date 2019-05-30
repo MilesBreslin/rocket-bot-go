@@ -372,9 +372,13 @@ func (rock *rocketCon) runMethod(i map[string] interface{}) (map[string] interfa
     rock.send <- i
     reply := <- c
     if _, ok := reply["error"]; ok {
-        errNo := reply["error"].(map[string] interface{})["error"].(float64)
-        errType := reply["error"].(map[string] interface{})["errorType"].(string)
-        return reply, errors.New(fmt.Sprintf("Login: %.0f %s", errNo, errType))
+        if _, ok := reply["error"].(map[string] interface{})["error"]; ok {
+            errNo := reply["error"].(map[string] interface{})["error"].(string)
+            errType := reply["error"].(map[string] interface{})["errorType"].(string)
+            return reply, errors.New(fmt.Sprintf("Login: %s %s", errNo, errType))
+        } else {
+            return reply, errors.New("Unknown error")
+        }
     }
     return reply, nil
 }

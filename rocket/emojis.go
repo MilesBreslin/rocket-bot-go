@@ -1,6 +1,6 @@
 package rocket
 
-const BUILTIN_EMOJIS []string = {
+var BUILTIN_EMOJIS []string = []string{
     "heart",
     "orange_heart",
     "yellow_heart",
