@@ -35,8 +35,14 @@ type rocketCon struct {
     resultsDel      chan string
     nextId          chan string
     messages        chan message
+    newMessages     chan message
     quit            chan struct{}
 }
+
+const STATUS_ONLINE string = "online"
+const STATUS_BUSY string = "busy"
+const STATUS_AWAY string = "away"
+const STATUS_OFFLINE string = "offline"
 
 func NewConnection(username string, password string) (rocketCon, error) {
     var rock rocketCon
@@ -103,6 +109,7 @@ func (rock *rocketCon) init() (error) {
     rock.results = make(map[string] chan map[string] interface{})
     rock.nextId = make(chan string,0)
     rock.messages = make(chan message,1024)
+    rock.newMessages = make(chan message,1024)
     rock.quit = make(chan struct{},0)
     rock.channels = make(map[string]string)
 
@@ -121,7 +128,6 @@ func (rock *rocketCon) init() (error) {
     }
 
     rock.subscribeRooms()
-    rock.RefreshChannelCache()
     log.Println("Initialized successfully")
     return nil
 }
@@ -235,10 +241,22 @@ func (rock *rocketCon) run() {
                         rock.subscribeRoom(obj[1].(map[string]interface{})["rid"].(string))
                     }
                 case "stream-room-messages":
-                    go func() {
-                        message := rock.handleMessageObject(obj[0].(map[string]interface{}))
-                        rock.messages <- message
-                    }()
+                    for _, val := range obj {
+                        message := rock.handleMessageObject(val.(map[string]interface{}))
+                        if message.IsNew && !message.IsMe {
+                            select {
+                            case rock.newMessages <- message:
+                                break
+                            default:
+                            }
+                        } else {
+                            select {
+                            case rock.messages <- message:
+                                break
+                            default:
+                            }
+                        }
+                    }
                 }
             case "ready":
                 break
@@ -313,6 +331,11 @@ func (rock *rocketCon) subscribeRooms() (error) {
 
     for index, _ := range objects {
         rock.subscribeRoom(objects[index].(map[string]interface{})["rid"].(string))
+        if _, ok := objects[index].(map[string]interface{})["name"]; ok {
+            name := objects[index].(map[string]interface{})["name"].(string)
+            id := objects[index].(map[string]interface{})["rid"].(string)
+            rock.channels[id] = name
+        }
     }
     return nil
 }
@@ -366,11 +389,11 @@ func (rock *rocketCon) connect() {
 }
 
 func (rock *rocketCon) login() error {
-    var login map[string] interface{}
+    var obj map[string] interface{}
     if rock.AuthToken == "" {
         passhash := fmt.Sprintf("%x",sha256.Sum256([]byte(rock.Password)))
         fmt.Println("Trying "+passhash)
-        login = map[string] interface{} {
+        obj = map[string] interface{} {
             "method": "login",
             "params": []map[string] interface{} {
                 map[string] interface{} {
@@ -385,7 +408,7 @@ func (rock *rocketCon) login() error {
             },
         }
     } else {
-        login = map[string] interface{} {
+        obj = map[string] interface{} {
             "method": "login",
             "params": []map[string] interface{} {
                 map[string] interface{} {
@@ -395,7 +418,7 @@ func (rock *rocketCon) login() error {
         }
     }
 
-    reply, err := rock.runMethod(login)
+    reply, err := rock.runMethod(obj)
     if err != nil {
         return err
     }
@@ -409,20 +432,20 @@ func (rock *rocketCon) GetMessage() (message, error) {
     select {
     case msg := <- rock.messages:
         return msg, nil
-    case <-rock.quit:
+    case msg := <- rock.newMessages:
         return msg, nil
+    case <-rock.quit:
+        return msg, errors.New("The rocket connection has been closed")
     }
 }
 
-func (rock *rocketCon) GetIncommingMessage() (message, error) {
-    for {
-        msg, err := rock.GetMessage()
-        if err != nil {
-            return msg, err
-        }
-        if msg.IsNew {
-            return msg, err
-        }
+func (rock *rocketCon) GetNewMessage() (message, error) {
+    var msg message
+    select {
+    case msg := <- rock.newMessages:
+        return msg, nil
+    case <-rock.quit:
+        return msg, errors.New("The rocket connection has been closed")
     }
 }
 
@@ -438,11 +461,11 @@ func (rock *rocketCon) RequestUserName(userid string) string {
 }
 
 func (rock *rocketCon) RefreshChannelCache() (error) {
-    message := map[string] interface{} {
+    obj := map[string] interface{} {
         "method": "rooms/get",
     }
 
-    reply, err := rock.runMethod(message)
+    reply, err := rock.runMethod(obj)
     if err != nil {
         return err
     }
@@ -456,21 +479,26 @@ func (rock *rocketCon) RefreshChannelCache() (error) {
     return err
 }
 
-func (rock *rocketCon) RequestMessage(mid string) message {
-    var msg message
+func (rock *rocketCon) requestMessageObj(mid string) map[string] interface{} {
     resp := rock.restRequest("/api/v1/chat.getMessage?msgId="+mid)
     var m map[string] interface{}
     err := json.Unmarshal(resp, &m)
     if err != nil {
         fmt.Println(err)
-        return msg
+        return m
     }
-    msg = rock.handleMessageObject(m["message"].(map[string] interface{}))
+    return m
+}
+
+func (rock *rocketCon) RequestMessage(mid string) message {
+    var msg message
+    obj := rock.requestMessageObj(mid)
+    msg = rock.handleMessageObject(obj["message"].(map[string] interface{}))
     return msg
 }
 
-func (rock *rocketCon) SendMessage(rid string, text string) error {
-    message := map[string] interface{} {
+func (rock *rocketCon) SendMessage(rid string, text string) (message, error) {
+    obj := map[string] interface{} {
         "method": "sendMessage",
         "params": []map[string] interface{} {
             map[string] interface{} {
@@ -480,8 +508,16 @@ func (rock *rocketCon) SendMessage(rid string, text string) error {
         },
     }
 
-    _, err := rock.runMethod(message)
-    return err
+    var msg message
+    reply, err := rock.runMethod(obj)
+    if err != nil {
+        return msg, err
+    }
+    if replyObj, ok := reply["result"].(map[string]interface{}); ok {
+        msg = rock.handleMessageObject(replyObj)
+    }
+    msg.IsMe = true
+    return msg, nil
 }
 
 func (rock *rocketCon) React(mid string, emoji string) error {
@@ -495,4 +531,45 @@ func (rock *rocketCon) React(mid string, emoji string) error {
 
     _, err := rock.runMethod(reaction)
     return err
+}
+
+func (rock *rocketCon) UserDefaultStatus(status string) (error) {
+    reaction := map[string] interface{} {
+        "method": "UserPresence:setDefaultStatus",
+        "params": []string {
+            status,
+        },
+    }
+
+    _, err := rock.runMethod(reaction)
+    return err
+}
+
+func (rock *rocketCon) UserTemporaryStatus(status string) (error) {
+    reaction := map[string] interface{} {
+        "method": "UserPresence:"+status,
+        "params": []string {
+        },
+    }
+
+    _, err := rock.runMethod(reaction)
+    return err
+}
+
+func (rock *rocketCon) ListCustomEmojis() ([]string, error) {
+    emojis := make([]string,0)
+
+    reply := rock.restRequest("/api/v1/emoji-custom.list")
+    var m map[string] interface{}
+    err := json.Unmarshal(reply, &m)
+    if err != nil {
+        return emojis, err
+    }
+
+    if _, ok := m["emojis"]; ok {
+        for _, val := range m["emojis"].(map[string]interface{})["update"].([]interface{}) {
+            emojis = append(emojis, fmt.Sprintf(":%s:",val.(map[string] interface{})["name"].(string)))
+        }
+    }
+    return emojis, nil
 }

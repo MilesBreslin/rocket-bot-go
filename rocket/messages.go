@@ -7,20 +7,22 @@ import (
 )
 
 type message struct {
-    IsNew           bool
-    IsMention       bool
-    IsEdited        bool
-    IsMe            bool
-    Id              string
-    UserName        string
-    UserId          string
-    RoomName        string
-    RoomId          string
-    Text            string
-    Timestamp       time.Time
-    UpdatedAt       time.Time
-    Reactions       map[string] []string
-    Attachments     []attachment
+    IsNew           bool                        `yaml:"IsNew"`
+    IsAddressedToMe bool                        `yaml:"IsAddressedToMe"`
+    IsMention       bool                        `yaml:"IsMention"`
+    IsEdited        bool                        `yaml:"IsEdited"`
+    IsMe            bool                        `yaml:"IsMe"`
+    Id              string                      `yaml:"Id"`
+    UserName        string                      `yaml:"UserName"`
+    UserId          string                      `yaml:"UserId"`
+    RoomName        string                      `yaml:"RoomName"`
+    RoomId          string                      `yaml:"RoomId"`
+    Text            string                      `yaml:"Text"`
+    Timestamp       time.Time                   `yaml:"Timestamp"`
+    UpdatedAt       time.Time                   `yaml:"UpdatedAt"`
+    Reactions       map[string] []string        `yaml:"Reactions"`
+    Attachments     []attachment                `yaml:"Attachments"`
+    obj             map[string] interface{}
     rocketCon       rocketCon
 }
 
@@ -61,9 +63,13 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
         msg.IsMe = true
     }
 
+    if strings.Contains(strings.ToLower(msg.Text), fmt.Sprintf("@%s",strings.ToLower(rock.UserName))) {
+        msg.IsMention = true
+    }
+
     if len(msg.Text) > len(rock.UserName)+2 {
         if string(strings.ToLower(msg.Text)[:len(rock.UserName)+2]) == fmt.Sprintf("@%s ", strings.ToLower(rock.UserName)) {
-            msg.IsMention = true
+            msg.IsAddressedToMe = true
         }
     }
 
@@ -71,7 +77,7 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
         msg.IsNew = false
     }
 
-    if _, ok := obj["urls"]; ok {
+    if _, ok := obj["urls"]; ok && len(obj["urls"].([]interface{})) != 0 {
         if _, ok := obj["urls"].([]interface{})[0].(map[string] interface{})["meta"]; ok {
             msg.IsNew = false
         }
@@ -98,13 +104,11 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
         msg.RoomName = val
     }
 
-    fmt.Println(msg.RoomName)
-
     return msg
 }
 
-func (msg *message) Reply(text string) {
-    msg.rocketCon.SendMessage(msg.RoomId, text)
+func (msg *message) Reply(text string) (message, error) {
+    return msg.rocketCon.SendMessage(msg.RoomId, text)
 }
 
 func (msg *message) KickUser() {
@@ -115,10 +119,53 @@ func (msg *message) React(emoji string) (error) {
     return msg.rocketCon.React(msg.Id, emoji)
 }
 
-func (msg *message) GetNoMention() (string) {
+func (msg *message) GetNotAddressedText() (string) {
     r := msg.Text
-    if len(msg.Text) > 2 && msg.IsMention {
+    if len(msg.Text) > 2 && msg.IsAddressedToMe {
         r = string(strings.ToLower(msg.Text)[len(msg.rocketCon.UserName)+2:])
     }
     return r
+}
+
+func (msg *message) EditText(text string) (error) {
+    obj := map[string] interface{} {
+        "method": "updateMessage",
+        "params": []map[string] interface{} {
+            map[string] interface{} {
+                "_id": msg.Id,
+                "rid": msg.RoomId,
+                "msg": text,
+            },
+        },
+    }
+
+    _, err := msg.rocketCon.runMethod(obj)
+    return err
+}
+
+func (msg *message) Delete(text string) (error) {
+    obj := map[string] interface{} {
+        "method": "deleteMessage",
+        "params": []map[string] interface{} {
+            map[string] interface{} {
+                "_id": msg.Id,
+            },
+        },
+    }
+
+    _, err := msg.rocketCon.runMethod(obj)
+    return err
+}
+
+func (msg *message) SetIsTyping(typing bool) (error) {
+    obj := map[string] interface{} {
+        "method": "stream-notify-room",
+        "params": []interface{} {
+            msg.RoomId+"/typing",
+            msg.rocketCon.UserName,
+            typing,
+        },
+    }
+    _, err := msg.rocketCon.runMethod(obj)
+    return err
 }
