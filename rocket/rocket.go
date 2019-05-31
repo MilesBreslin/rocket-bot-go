@@ -44,16 +44,18 @@ const STATUS_BUSY string = "busy"
 const STATUS_AWAY string = "away"
 const STATUS_OFFLINE string = "offline"
 
-func NewConnection(username string, password string) (rocketCon, error) {
+func NewConnection(domain string, username string, password string) (rocketCon, error) {
     var rock rocketCon
+    rock.HostName = domain
     rock.UserName = username
     rock.Password = password
     rock.init()
     return rock, nil
 }
 
-func NewConnectionAuthToken(authtoken string) (rocketCon, error) {
+func NewConnectionAuthToken(domain string, authtoken string) (rocketCon, error) {
     var rock rocketCon
+    rock.HostName = domain
     rock.AuthToken = authtoken
     rock.init()
     return rock, nil

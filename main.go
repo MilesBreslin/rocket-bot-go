@@ -23,7 +23,6 @@ func main() {
     rock, err := rocket.NewConnectionConfig("rb.cfg")
 
     rock.UserTemporaryStatus(rocket.STATUS_AWAY)
-    rock.ListEmojis()
 
     // If there was an error connecting, panic
     if err != nil {

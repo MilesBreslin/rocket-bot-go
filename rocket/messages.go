@@ -50,12 +50,14 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
     if attachments, ok := obj["attachments"]; ok && attachments != nil {
         msg.Attachments = make([]attachment,0)
         for _, val := range attachments.([]interface{}) {
-            var attach attachment
-            attach.Description = val.(map[string] interface{})["description"].(string)
-            attach.Title = val.(map[string] interface{})["title"].(string)
-            attach.Link = val.(map[string] interface{})["title_link"].(string)
-            attach.Type = val.(map[string] interface{})["type"].(string)
-            msg.Attachments = append(msg.Attachments, attach)
+            if _, ok := val.(map[string] interface{})["description"]; ok {
+                var attach attachment
+                attach.Description = val.(map[string] interface{})["description"].(string)
+                attach.Title = val.(map[string] interface{})["title"].(string)
+                attach.Link = val.(map[string] interface{})["title_link"].(string)
+                attach.Type = val.(map[string] interface{})["type"].(string)
+                msg.Attachments = append(msg.Attachments, attach)
+            }
         }
     }
 
