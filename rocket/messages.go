@@ -9,6 +9,7 @@ import (
 type Message struct {
     IsNew           bool                        `yaml:"IsNew"`
     IsAddressedToMe bool                        `yaml:"IsAddressedToMe"`
+    IsDirect        bool                        `yaml:"IsDirect"`
     IsMention       bool                        `yaml:"IsMention"`
     IsEdited        bool                        `yaml:"IsEdited"`
     IsMe            bool                        `yaml:"IsMe"`
@@ -24,7 +25,7 @@ type Message struct {
     Attachments     []attachment                `yaml:"Attachments"`
     QuotedMsgs      []string                    `yaml:"QuotedMsgs"`
     obj             map[string] interface{}
-    rocketCon       rocketCon
+    rocketCon       RocketCon
 }
 
 type attachment struct {
@@ -34,7 +35,7 @@ type attachment struct {
     Link            string
 }
 
-func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) Message {
+func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message {
     var msg Message
     msg.rocketCon = *rock
     msg.IsNew = true
@@ -95,25 +96,42 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) Message 
             }
         }
     }
-    unixTs := obj["ts"].(map[string]interface{})["$date"].(float64)
-    msg.Timestamp = time.Unix(int64(unixTs/1000),0)
+    if _, ok := obj["ts"]; ok {
+        var unixTs float64
+        switch obj["ts"].(type) {
+        case map[string]interface{}:
+            unixTs = obj["ts"].(map[string]interface{})["$date"].(float64)
+            msg.Timestamp = time.Unix(int64(unixTs/1000),0)
+        case string:
+            msg.Timestamp, _ = time.Parse("2006-01-02T15:04:05.999999999Z", obj["ts"].(string))
+        }
+    }
 
     if _, ok := obj["_updatedAt"]; ok {
-        unixUp := obj["_updatedAt"].(map[string]interface{})["$date"].(float64)
-        msg.UpdatedAt = time.Unix(int64(unixUp/1000),0)
+        var unixTs float64
+        switch obj["_updatedAt"].(type) {
+        case map[string]interface{}:
+            unixTs = obj["_updatedAt"].(map[string]interface{})["$date"].(float64)
+            msg.Timestamp = time.Unix(int64(unixTs/1000),0)
+        case string:
+            msg.Timestamp, _ = time.Parse("2006-01-02T15:04:05.999999999Z", obj["_updatedAt"].(string))
+        }
     }
 
     if val, ok := rock.channels[msg.RoomId]; ok {
         msg.RoomName = val
+        if msg.RoomName == msg.UserName {
+            msg.IsDirect = true
+        }
     }
 
     msg.QuotedMsgs = make([]string,0)
-    if rocketLinks := strings.Split("]("+rock.GetHttpURL()); len(rocketLinks)>0 {
-        for val, _ := range rocketLinks {
+    if rocketLinks := strings.Split(msg.Text,"]("+rock.getHttpURL()); len(rocketLinks)>0 {
+        for _, val := range rocketLinks {
             msgIdEnd := strings.IndexAny(val, "&)")
             msgIdBegin := strings.Index(val, "?msg=")
             if msgIdBegin != -1 && msgIdEnd != -1 {
-                msg.QuotedMsgs = append(msg.QuotedMsgs, val[msgIdBegin:msgIdEnd])
+                msg.QuotedMsgs = append(msg.QuotedMsgs, val[msgIdBegin+5:msgIdEnd])
             }
         }
     }
@@ -183,4 +201,20 @@ func (msg *Message) SetIsTyping(typing bool) (error) {
     }
     _, err := msg.rocketCon.runMethod(obj)
     return err
+}
+
+func (msg *Message) GetQuote() (string) {
+    var channelType string
+    var proto string
+    if msg.IsDirect {
+        channelType = "direct"
+    } else {
+        channelType = "channel"
+    }
+    if msg.rocketCon.HostSSL {
+        proto = "https"
+    } else {
+        proto = "http"
+    }
+    return fmt.Sprintf("[](%s://%s/%s/%s?msg=%s)", proto, msg.rocketCon.HostName,channelType,msg.RoomName,msg.Id)
 }

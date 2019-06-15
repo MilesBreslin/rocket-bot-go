@@ -10,6 +10,7 @@ import (
     "crypto/sha256"
     "errors"
     "log"
+    "strings"
 
     "github.com/gorilla/websocket"
     "gopkg.in/yaml.v2"
@@ -44,7 +45,7 @@ const STATUS_BUSY string = "busy"
 const STATUS_AWAY string = "away"
 const STATUS_OFFLINE string = "offline"
 
-func NewConnection(domain string, username string, password string) (rocketCon, error) {
+func NewConnection(domain string, username string, password string) (RocketCon, error) {
     var rock RocketCon
     rock.HostName = domain
     rock.UserName = username
@@ -61,30 +62,30 @@ func NewConnectionAuthToken(domain string, authtoken string) (RocketCon, error) 
     return rock, nil
 }
 
-func NewConnectionConfig(filename string) (RocketCon, error) {
+func NewConnectionConfig(filename string) (*RocketCon, error) {
     var rock RocketCon
     _, err := os.Stat(filename)
     if err != nil {
-        return rock, err
+        return &rock, err
     }
 
     source, err := ioutil.ReadFile(filename)
     if err != nil {
-        return rock, err
+        return &rock, err
     }
 
     rock.HostSSL = true
 
     err = yaml.Unmarshal(source, &rock)
     if err != nil {
-        return rock, err
+        return &rock, err
     }
 
     if rock.HostName == "" {
-        return rock, errors.New("HostName not set")
+        return &rock, errors.New("HostName not set")
     }
     if rock.AuthToken == "" && (rock.UserName == "" || rock.Password == "" ){
-        return rock, errors.New("AuthToken not set")
+        return &rock, errors.New("AuthToken not set")
     }
 
     if rock.HostPort == 0 {
@@ -96,7 +97,7 @@ func NewConnectionConfig(filename string) (RocketCon, error) {
     }
 
     err = rock.init()
-    return rock, err
+    return &rock, err
 }
 
 func (rock *RocketCon) init() (error) {
@@ -141,7 +142,7 @@ func (rock *RocketCon) run() {
     const timeout = 125 * time.Second
 
     // Define Websocket URL
-    wsURL := getWsURL()
+    wsURL := rock.getWsURL()
 
     // Init websocket
     ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -340,32 +341,40 @@ func (rock *RocketCon) subscribeRooms() (error) {
 func (rock *RocketCon) getHttpURL() (string) {
     var httpURL string
     if rock.HostSSL {
-        httpURL = fmt.Sprintf("https://%s:%d%s", rock.HostName, rock.HostPort, str)
+        httpURL = fmt.Sprintf("https://%s:%d", rock.HostName, rock.HostPort)
     } else {
-        httpURL = fmt.Sprintf("http://%s:%d%s", rock.HostName, rock.HostPort, str)
+        httpURL = fmt.Sprintf("http://%s:%d", rock.HostName, rock.HostPort)
     }
     return httpURL
 }
 func (rock *RocketCon) getWsURL() (string) {
-    httpURL := getHttpURL()
+    httpURL := rock.getHttpURL()
     return strings.Replace(httpURL, "http", "ws", 1)+"/websocket"
 }
 
 func (rock *RocketCon) restRequest(str string) []byte{
     // Define Websocket URL
-    httpURL := rock.getHttpURL()
+    httpURL := rock.getHttpURL()+str
     
     // Build Request
     client := &http.Client{}
-    request, _ := http.NewRequest("GET", httpURL, nil)
+    request, err := http.NewRequest("GET", httpURL, nil)
+    if err != nil {
+        fmt.Println(err)
+        return make([]byte,0)
+    }
     request.Header.Set("X-Auth-Token", rock.AuthToken)
     request.Header.Set("X-User-Id", rock.UserId)
 
     // Get Request
-    response, _ := client.Do(request)
+    response, err := client.Do(request)
+    if err != nil {
+        fmt.Println(err)
+        return make([]byte,0)
+    }
 
     // Parse Request
-    defer response.Body.Close()
+    //defer response.Body.Close()
     body, _ := ioutil.ReadAll(response.Body)
     return body
 }
@@ -403,7 +412,6 @@ func (rock *RocketCon) login() error {
     var obj map[string] interface{}
     if rock.AuthToken == "" {
         passhash := fmt.Sprintf("%x",sha256.Sum256([]byte(rock.Password)))
-        fmt.Println("Trying "+passhash)
         obj = map[string] interface{} {
             "method": "login",
             "params": []map[string] interface{} {
@@ -501,11 +509,14 @@ func (rock *RocketCon) requestMessageObj(mid string) map[string] interface{} {
     return m
 }
 
-func (rock *RocketCon) RequestMessage(mid string) Message {
+func (rock *RocketCon) RequestMessage(mid string) (Message, error) {
     var msg Message
     obj := rock.requestMessageObj(mid)
-    msg = rock.handleMessageObject(obj["message"].(map[string] interface{}))
-    return msg
+    if _, ok := obj["message"]; ok {
+        msg = rock.handleMessageObject(obj["message"].(map[string] interface{}))
+        return msg, nil
+    }
+    return msg, errors.New("Some error")
 }
 
 func (rock *RocketCon) SendMessage(rid string, text string) (Message, error) {
