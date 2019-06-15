@@ -22,6 +22,7 @@ type Message struct {
     UpdatedAt       time.Time                   `yaml:"UpdatedAt"`
     Reactions       map[string] []string        `yaml:"Reactions"`
     Attachments     []attachment                `yaml:"Attachments"`
+    QuotedMsgs      []string                    `yaml:"QuotedMsgs"`
     obj             map[string] interface{}
     rocketCon       rocketCon
 }
@@ -105,6 +106,18 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) Message 
     if val, ok := rock.channels[msg.RoomId]; ok {
         msg.RoomName = val
     }
+
+    msg.QuotedMsgs = make([]string,0)
+    if rocketLinks := strings.Split("]("+rock.GetHttpURL()); len(rocketLinks)>0 {
+        for val, _ := range rocketLinks {
+            msgIdEnd := strings.IndexAny(val, "&)")
+            msgIdBegin := strings.Index(val, "?msg=")
+            if msgIdBegin != -1 && msgIdEnd != -1 {
+                msg.QuotedMsgs = append(msg.QuotedMsgs, val[msgIdBegin:msgIdEnd])
+            }
+        }
+    }
+
 
     return msg
 }

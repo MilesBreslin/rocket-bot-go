@@ -141,12 +141,7 @@ func (rock *RocketCon) run() {
     const timeout = 125 * time.Second
 
     // Define Websocket URL
-    var wsURL string
-    if rock.HostSSL {
-        wsURL = fmt.Sprintf("wss://%s:%d/websocket", rock.HostName, rock.HostPort)
-    } else {
-        wsURL = fmt.Sprintf("ws://%s:%d/websocket", rock.HostName, rock.HostPort)
-    }
+    wsURL := getWsURL()
 
     // Init websocket
     ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
@@ -342,14 +337,24 @@ func (rock *RocketCon) subscribeRooms() (error) {
     return nil
 }
 
-func (rock *RocketCon) restRequest(str string) []byte{
-    // Define Websocket URL
+func (rock *RocketCon) getHttpURL() (string) {
     var httpURL string
     if rock.HostSSL {
         httpURL = fmt.Sprintf("https://%s:%d%s", rock.HostName, rock.HostPort, str)
     } else {
         httpURL = fmt.Sprintf("http://%s:%d%s", rock.HostName, rock.HostPort, str)
     }
+    return httpURL
+}
+func (rock *RocketCon) getWsURL() (string) {
+    httpURL := getHttpURL()
+    return strings.Replace(httpURL, "http", "ws", 1)+"/websocket"
+}
+
+func (rock *RocketCon) restRequest(str string) []byte{
+    // Define Websocket URL
+    httpURL := rock.getHttpURL()
+    
     // Build Request
     client := &http.Client{}
     request, _ := http.NewRequest("GET", httpURL, nil)
