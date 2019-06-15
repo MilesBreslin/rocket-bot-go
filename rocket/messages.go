@@ -6,7 +6,7 @@ import (
     "time"
 )
 
-type message struct {
+type Message struct {
     IsNew           bool                        `yaml:"IsNew"`
     IsAddressedToMe bool                        `yaml:"IsAddressedToMe"`
     IsMention       bool                        `yaml:"IsMention"`
@@ -33,8 +33,8 @@ type attachment struct {
     Link            string
 }
 
-func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message {
-    var msg message
+func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) Message {
+    var msg Message
     msg.rocketCon = *rock
     msg.IsNew = true
     _, msg.IsEdited = obj["editedAt"]
@@ -109,19 +109,19 @@ func (rock *rocketCon) handleMessageObject(obj map[string] interface{}) message 
     return msg
 }
 
-func (msg *message) Reply(text string) (message, error) {
+func (msg *Message) Reply(text string) (Message, error) {
     return msg.rocketCon.SendMessage(msg.RoomId, text)
 }
 
-func (msg *message) KickUser() {
+func (msg *Message) KickUser() {
     msg.Reply("/kick @"+msg.UserName)
 }
 
-func (msg *message) React(emoji string) (error) {
+func (msg *Message) React(emoji string) (error) {
     return msg.rocketCon.React(msg.Id, emoji)
 }
 
-func (msg *message) GetNotAddressedText() (string) {
+func (msg *Message) GetNotAddressedText() (string) {
     r := msg.Text
     if len(msg.Text) > 2 && msg.IsAddressedToMe {
         r = string(strings.ToLower(msg.Text)[len(msg.rocketCon.UserName)+2:])
@@ -129,7 +129,7 @@ func (msg *message) GetNotAddressedText() (string) {
     return r
 }
 
-func (msg *message) EditText(text string) (error) {
+func (msg *Message) EditText(text string) (error) {
     obj := map[string] interface{} {
         "method": "updateMessage",
         "params": []map[string] interface{} {
@@ -145,7 +145,7 @@ func (msg *message) EditText(text string) (error) {
     return err
 }
 
-func (msg *message) Delete(text string) (error) {
+func (msg *Message) Delete(text string) (error) {
     obj := map[string] interface{} {
         "method": "deleteMessage",
         "params": []map[string] interface{} {
@@ -159,7 +159,7 @@ func (msg *message) Delete(text string) (error) {
     return err
 }
 
-func (msg *message) SetIsTyping(typing bool) (error) {
+func (msg *Message) SetIsTyping(typing bool) (error) {
     obj := map[string] interface{} {
         "method": "stream-notify-room",
         "params": []interface{} {
