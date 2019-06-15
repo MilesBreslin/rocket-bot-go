@@ -1,2 +1,2 @@
-rb.cfg
-reminder.yml
+*.cfg*
+*.yml*
