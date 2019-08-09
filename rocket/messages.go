@@ -25,7 +25,7 @@ type Message struct {
     Attachments     []attachment                `yaml:"Attachments"`
     QuotedMsgs      []string                    `yaml:"QuotedMsgs"`
     obj             map[string] interface{}
-    rocketCon       RocketCon
+    rocketCon       *RocketCon
 }
 
 type attachment struct {
@@ -37,7 +37,7 @@ type attachment struct {
 
 func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message {
     var msg Message
-    msg.rocketCon = *rock
+    msg.rocketCon = rock
     msg.IsNew = true
     _, msg.IsEdited = obj["editedAt"]
     if msg.IsEdited {
