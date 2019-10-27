@@ -11,6 +11,7 @@ import (
     // Import from the current directory the folder rocket and call the package rocket
     "./rocket"
 
+    "fmt"
     "strings"
     "math/rand"
     "os"
@@ -33,7 +34,7 @@ func main() {
     }
 
     for i := 0; i < len(emojis); i++ {
-        if ! strings.Contains("parrot",emoji) {
+        if ! strings.Contains("parrot",emojis[i]) {
             emojis[i] = emojis[len(emojis)]
             emojis = emojis[:len(emojis)-1]
             i--
@@ -53,7 +54,7 @@ func main() {
         for _, username := range os.Args[1:] {
             if strings.HasPrefix(strings.ToLower(msg.Text), fmt.Sprintf("@%s",username)) || msg.UserName == username {
                 if len(msg.Reactions) == 0 {
-                    msg.React(randEmoji[rand.Intn(len(emojis))])
+                    msg.React(emojis[rand.Intn(len(emojis))])
                 }
             }
         }
