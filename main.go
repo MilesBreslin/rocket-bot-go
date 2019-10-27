@@ -43,7 +43,7 @@ func main() {
 
     for {
         // Wait for a new message to come in
-        msg, err := rock.GetNewMessage()
+        msg, err := rock.GetMessage()
 
         // If error, quit because that means the connection probably quit
         if err != nil {
@@ -52,7 +52,9 @@ func main() {
 
         for _, username := range os.Args[1:] {
             if strings.HasPrefix(strings.ToLower(msg.Text), fmt.Sprintf("@%s",username)) || msg.UserName == username {
-                msg.React(randEmoji[rand.Intn(len(emojis))])
+                if len(msg.Reactions) == 0 {
+                    msg.React(randEmoji[rand.Intn(len(emojis))])
+                }
             }
         }
     }
