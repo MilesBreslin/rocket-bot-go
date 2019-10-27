@@ -11,9 +11,9 @@ import (
     // Import from the current directory the folder rocket and call the package rocket
     "./rocket"
 
-    "fmt"
-    "time"
-    "gopkg.in/yaml.v2"
+    "strings"
+    "math/rand"
+    "os"
 )
 
 func main() {
@@ -22,12 +22,24 @@ func main() {
     // Also see NewConnectionPassword and NewConnectionAuthToken
     rock, err := rocket.NewConnectionConfig("rb.cfg")
 
-    rock.UserTemporaryStatus(rocket.STATUS_AWAY)
-
     // If there was an error connecting, panic
     if err != nil {
         panic(err)
     }
+
+    emojis, err := rock.ListCustomEmojis()
+    if err != nil {
+        panic(err)
+    }
+
+    for (i := 0; i < len(emojis); i++) {
+        if ! strings.Contains("parrot",emoji) {
+            emojis[i] = emojis[len(emojis)]
+            emojis = emojis[:len(emojis)-1]
+            i--
+        }
+    }
+    fmt.Println(emojis)
 
     for {
         // Wait for a new message to come in
@@ -38,30 +50,10 @@ func main() {
             break
         }
 
-        // Print the message structure in a user-legible format
-        // yml is []byte type, _ means send the returned error to void
-        yml, _ := yaml.Marshal(msg)
-        fmt.Println(string(yml))
-
-        // If begins with '@Username ' or is in private chat
-        if msg.IsAddressedToMe || msg.RoomName == "" {
-            // Reply to the message with a formatted string
-            reply, err := msg.Reply(fmt.Sprintf("@%s %s %d", msg.UserName, msg.GetNotAddressedText(), 0))
-
-            // If no error replying, take the reply and edit it to count to 10 asynchronously
-            if err == nil {
-                go func() {
-                    msg.SetIsTyping(true)
-                    for i := 1; i<=10; i++ {
-                        time.Sleep(time.Second)
-                        reply.EditText(fmt.Sprintf("@%s %s %d", msg.UserName, msg.GetNotAddressedText(),i))
-                    }
-                    msg.SetIsTyping(false)
-                }()
+        for _, username := range os.Args[1:] {
+            if strings.HasPrefix(strings.ToLower(msg.Text), fmt.Sprintf("@%s",username)) || msg.UserName == username {
+                msg.React(randEmoji[rand.Intn(len(emojis))])
             }
-
-            // React to the initial message
-            msg.React(":grinning:")
         }
     }
 }
