@@ -34,7 +34,7 @@ func main() {
     }
 
     for i := 0; i < len(emojis); i++ {
-        if ! strings.Contains("parrot",emojis[i]) {
+        if ! strings.Contains(emojis[i], "parrot") {
             fmt.Println("removing", emojis[i])
             emojis[i] = emojis[len(emojis)-1]
             emojis = emojis[:len(emojis)-1]
