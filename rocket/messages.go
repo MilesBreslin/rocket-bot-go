@@ -35,6 +35,12 @@ type attachment struct {
     Link            string
 }
 
+var lastMessageTime time.Time
+
+func init() {
+    lastMessageTime = time.Now()
+}
+
 func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message {
     var msg Message
     msg.rocketCon = *rock
@@ -134,6 +140,12 @@ func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message 
                 msg.QuotedMsgs = append(msg.QuotedMsgs, val[msgIdBegin+5:msgIdEnd])
             }
         }
+    }
+
+    if msg.Timestamp.after(lastMessageTime) {
+        lastMessageTime = msg.Timestamp
+    } else {
+        msg.IsNew = false;
     }
 
 
