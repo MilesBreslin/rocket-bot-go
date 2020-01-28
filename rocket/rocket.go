@@ -236,7 +236,10 @@ func (rock *RocketCon) run() {
                 case "stream-notify-user":
                     switch obj[0].(string) {
                     case "inserted":
-                        rock.subscribeRoom(obj[1].(map[string]interface{})["rid"].(string))
+                        id := obj[1].(map[string]interface{})["rid"].(string)
+                        name := obj[1].(map[string]interface{})["name"].(string)
+                        rock.channels[id] = name
+                        rock.subscribeRoom(id)
                     }
                 case "stream-room-messages":
                     for _, val := range obj {
