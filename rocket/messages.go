@@ -142,7 +142,7 @@ func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message 
         }
     }
 
-    if msg.Timestamp.after(lastMessageTime) {
+    if msg.Timestamp.After(lastMessageTime) {
         lastMessageTime = msg.Timestamp
     } else {
         msg.IsNew = false;
