@@ -598,3 +598,39 @@ func (rock *RocketCon) ListCustomEmojis() ([]string, error) {
     }
     return emojis, nil
 }
+
+func (rock *RocketCon) ListUsersInRoomId(roomId string) ([]string, error) {
+    users := make([]string, 0)
+
+    reply := rock.restRequest(fmt.Sprintf("/api/v1/channels.members?roomId=%s&count=1000",roomId))
+    var m map[string] interface{}
+    err := json.Unmarshal(reply, &m)
+    if err != nil {
+        return users, err
+    }
+
+    if members, ok := m["members"] ; ok {
+        for _, member := range members.([]interface{}) {
+            if username, ok := member.(map[string]interface{})["username"] ; ok {
+                users = append(users, username.(string))
+            }
+        }
+        return users, nil
+    }
+    return users, errors.New("Failed to handle members")
+}
+
+func (rock *RocketCon) ListUsersInRoom(room string) ([]string, error) {
+    roomId := ""
+    for id, name := range rock.channels {
+        if room == name {
+            roomId = id
+            break
+        }
+    }
+    if roomId == "" {
+        return make([]string,0), errors.New("No Known Room")
+    }
+    users, err := rock.ListUsersInRoomId(roomId)
+    return users, err
+}
