@@ -25,7 +25,7 @@ type Message struct {
     Attachments     []attachment                `yaml:"Attachments"`
     QuotedMsgs      []string                    `yaml:"QuotedMsgs"`
     obj             map[string] interface{}
-    rocketCon       *RocketCon
+    RocketCon       *RocketCon                  `yaml:"-"`
 }
 
 type attachment struct {
@@ -43,7 +43,7 @@ func init() {
 
 func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message {
     var msg Message
-    msg.rocketCon = rock
+    msg.RocketCon = rock
     msg.IsNew = true
     _, msg.IsEdited = obj["editedAt"]
     if msg.IsEdited {
@@ -153,7 +153,7 @@ func (rock *RocketCon) handleMessageObject(obj map[string] interface{}) Message 
 }
 
 func (msg *Message) Reply(text string) (Message, error) {
-    return msg.rocketCon.SendMessage(msg.RoomId, text)
+    return msg.RocketCon.SendMessage(msg.RoomId, text)
 }
 
 func (msg *Message) KickUser() {
@@ -161,13 +161,13 @@ func (msg *Message) KickUser() {
 }
 
 func (msg *Message) React(emoji string) (error) {
-    return msg.rocketCon.React(msg.Id, emoji)
+    return msg.RocketCon.React(msg.Id, emoji)
 }
 
 func (msg *Message) GetNotAddressedText() (string) {
     r := msg.Text
     if len(msg.Text) > 2 && msg.IsAddressedToMe {
-        r = string(strings.ToLower(msg.Text)[len(msg.rocketCon.UserName)+2:])
+        r = string(strings.ToLower(msg.Text)[len(msg.RocketCon.UserName)+2:])
     }
     return r
 }
@@ -184,11 +184,11 @@ func (msg *Message) EditText(text string) (error) {
         },
     }
 
-    _, err := msg.rocketCon.runMethod(obj)
+    _, err := msg.RocketCon.runMethod(obj)
     return err
 }
 
-func (msg *Message) Delete(text string) (error) {
+func (msg *Message) Delete() (error) {
     obj := map[string] interface{} {
         "method": "deleteMessage",
         "params": []map[string] interface{} {
@@ -198,7 +198,7 @@ func (msg *Message) Delete(text string) (error) {
         },
     }
 
-    _, err := msg.rocketCon.runMethod(obj)
+    _, err := msg.RocketCon.runMethod(obj)
     return err
 }
 
@@ -207,11 +207,11 @@ func (msg *Message) SetIsTyping(typing bool) (error) {
         "method": "stream-notify-room",
         "params": []interface{} {
             msg.RoomId+"/typing",
-            msg.rocketCon.UserName,
+            msg.RocketCon.UserName,
             typing,
         },
     }
-    _, err := msg.rocketCon.runMethod(obj)
+    _, err := msg.RocketCon.runMethod(obj)
     return err
 }
 
@@ -223,10 +223,10 @@ func (msg *Message) GetQuote() (string) {
     } else {
         channelType = "channel"
     }
-    if msg.rocketCon.HostSSL {
+    if msg.RocketCon.HostSSL {
         proto = "https"
     } else {
         proto = "http"
     }
-    return fmt.Sprintf("[](%s://%s/%s/%s?msg=%s)", proto, msg.rocketCon.HostName,channelType,msg.RoomName,msg.Id)
+    return fmt.Sprintf("[](%s://%s/%s/%s?msg=%s)", proto, msg.RocketCon.HostName,channelType,msg.RoomName,msg.Id)
 }
