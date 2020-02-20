@@ -42,7 +42,7 @@ type player struct {
     Dropped             bool
 }
 
-type commandHandlerFunc func(msg rocket.Message, args []string, user string)
+type commandHandlerFunc func(msg rocket.Message, args []string, user string, handler commandHandler)
 type commandHandler struct {
     handler             commandHandlerFunc
     usage               string
@@ -70,7 +70,7 @@ var commands = map[string]commandHandler {
     "close": commandHandler{
         usage: "<bracket name>",
         description: "Close bracket sign ups",
-        handler: handleClose, 
+        handler: handleRMWFunc(handleClose),
     },
     "delete": commandHandler{
         usage: "<bracket name>",
@@ -90,17 +90,17 @@ var commands = map[string]commandHandler {
     "clear": commandHandler{
         usage: "<bracket name>",
         description: "Clear the bracket information",
-        handler: handleClear,
+        handler: handleRMWFunc(handleClear),
     },
     "win-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a won round",
-        handler: handleWinRound,
+        handler: handleRMWFunc(handleWinRound),
     },
     "loose-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a lost round",
-        handler: handleLooseRound,
+        handler: handleRMWFunc(handleLooseRound),
     },
     "drop": commandHandler{
         usage: "<bracket name>",
@@ -110,17 +110,17 @@ var commands = map[string]commandHandler {
     "show": commandHandler{
         usage: "<bracket name>",
         description: "Show the state of the bracket",
-        handler: handleShow,
+        handler: handleRMWFunc(handleShow),
     },
     "set-score": commandHandler{
         usage: "<bracket name> <wins-losses>",
         description: "Adjust your score for an inaccuracies",
-        handler: handleSetScore,
+        handler: handleRMWFunc(handleSetScore),
     },
     "new-round": commandHandler{
         usage: "<bracket name>",
         description: "Force a new round",
-        handler: handleNewRound,
+        handler: handleRMWFunc(handleNewRound),
     },
 }
 
@@ -194,21 +194,21 @@ func main() {
                     user = strings.ReplaceAll(args[len(args)-1], "@", "")
                     args = args[:len(args)-2]
                 }
-                commands[commandName].handler(msg, args[1:], user)
+                commands[commandName].handler(msg, args[1:], user, commands[commandName])
             }
         }()
     }
 }
 
-func LoadBracket(s string) (bracket, error) {
+func LoadBracket(s string) (*bracket, error) {
     var b bracket
     b.Name = strings.ToLower(s)
     bytes, err := ioutil.ReadFile(b.Name + ".yml")
     if err != nil {
-        return b, err
+        return nil, err
     }
     err = yaml.Unmarshal(bytes, &b)
-    return b, err
+    return &b, err
 }
 
 func (b *bracket) Write() error {
@@ -314,7 +314,29 @@ func (b *bracket) RoundIncompletePlayers() []string {
     return incompletePlayers
 }
 
-func handleCreate(msg rocket.Message, args []string, user string) {
+func handleRMWFunc(f func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error)) (func(msg rocket.Message, args []string, user string, handler commandHandler)) {
+    return func(msg rocket.Message, args []string, user string, handler commandHandler) {
+        if len(args) < 1 {
+            msg.Reply("Not enough arguments\nSee usage")
+            return
+        }
+        b, _ := LoadBracket(args[0])
+        reply, err := f(msg, args[1:], user, handler, b)
+        if err != nil {
+            return
+        }
+        err = b.Write()
+        if err != nil {
+            if reply == nil {
+                msg.Reply("Error writing bracket " + b.Name)
+            } else {
+                reply.EditText("Error writing bracket " + b.Name)
+            }
+        }
+    }
+}
+
+func handleCreate(msg rocket.Message, args []string, user string, handler commandHandler) {
     if len(args) < 1 {
         msg.Reply("Not enough arguments\nSee usage")
         return
@@ -348,7 +370,7 @@ func handleCreate(msg rocket.Message, args []string, user string) {
     }
 }
 
-func handlePromote(msg rocket.Message, args []string, user string) {
+func handlePromote(msg rocket.Message, args []string, user string, handler commandHandler) {
     switch {
     case len(args) < 1:
         msg.Reply("Which brackets do you want to promote")
@@ -372,7 +394,7 @@ func handlePromote(msg rocket.Message, args []string, user string) {
     }
 }
 
-func handleSignup(msg rocket.Message, args []string, user string) {
+func handleSignup(msg rocket.Message, args []string, user string, handler commandHandler) {
     if len(args) < 1 {
         msg.Reply("Which brackets do you want to sign up for?")
         return
@@ -394,7 +416,7 @@ func handleSignup(msg rocket.Message, args []string, user string) {
     }
 }
 
-func handleDump(msg rocket.Message, args []string, user string) {
+func handleDump(msg rocket.Message, args []string, user string, handler commandHandler) {
     switch {
     case len(args) < 1:
         msg.Reply("Which brackets do you want to dump?")
@@ -414,26 +436,16 @@ func handleDump(msg rocket.Message, args []string, user string) {
     }
 }
 
-func handleClose(msg rocket.Message, args []string, user string) {
-    if len(args) != 1 {
-        msg.Reply("The only argument is a single bracket name")
-        return
-    }
-    b, err := LoadBracket(args[0])
-    if err != nil {
-        msg.Reply(args[0] + " does not exist")
-        return
-    }
-
+func handleClose(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     if len(b.Rounds) > 0 {
         msg.Reply(args[0] + " has already been closed")
-        return
+        return nil, errors.New("Do not write)")
     }
 
     // Send Status Message
     statusMsg, err := msg.Reply("Collecting all users")
     if err != nil {
-        return
+        return nil, err
     }
     updateChannel := make(chan string, 0)
     defer close(updateChannel)
@@ -478,50 +490,29 @@ func handleClose(msg rocket.Message, args []string, user string) {
         })
     }
 
-    err = b.Write()
-    if err != nil {
-        msg.Reply("Failed to write new bracket")
-        return
-    }
-
     updateChannel <- "Revealing players"
-    fancyReveal(msg, &b)
-
+    fancyReveal(msg, b)
+    return nil, nil
 }
 
-func handleNewRound(msg rocket.Message, args []string, user string) {
-    if len(args) != 1 {
-        msg.Reply("Enter only the bracket name")
-        return
-    }
-
-    b, err := LoadBracket(args[0])
-    if err != nil {
-        msg.Reply("Error loading bracket")
-        return
-    }
-
+func handleNewRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     if len(b.Rounds) == 0 {
         msg.Reply("Signups have not closed yet")
-        return
+        return nil, errors.New("Do not write")
     }
 
     b.NewRound()
-    err = b.Write()
-    if err != nil {
-        msg.Reply("Failed to write new bracket")
-        return
-    }
 
     statusMsg, err := msg.Reply("Revealing Players")
     if err != nil {
-        return
+        return nil, err
     }
     updateChannel := make(chan string, 0)
     defer close(updateChannel)
     go messageDotsTicker(statusMsg, updateChannel)
 
-    fancyReveal(msg, &b)
+    fancyReveal(msg, b)
+    return nil, nil
 }
 
 func fancyReveal(msg rocket.Message, b *bracket) {
@@ -539,116 +530,71 @@ func fancyReveal(msg rocket.Message, b *bracket) {
     }
 }
 
-func handleWinRound(msg rocket.Message, args []string, user string) {
-    if len(args) != 1 {
-        msg.Reply("Enter only the bracket name")
-        return
-    }
-
-    b, err := LoadBracket(args[0])
+func handleWinRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    var reply rocket.Message
+    err := b.WinRound(user)
     if err != nil {
-        msg.Reply("Error loading bracket")
-        return
-    }
-
-    err = b.WinRound(user)
-    if err != nil {
-        msg.Reply("User not found in bracket")
-        return
+        reply, _ = msg.Reply("User not found in bracket")
+        return &reply, err
     }
 
     opponent, _ := b.GetOpponent(user)
     if opponent == "" {
-        msg.Reply("Unable to find opponent. Please make sure they report their loss")
+        reply, err = msg.Reply("Unable to find opponent. Please make sure they report their loss")
     } else {
         b.LooseRound(opponent)
-        msg.Reply(fmt.Sprintf("%s lost this round", opponent))
+        reply, err = msg.Reply(fmt.Sprintf("%s lost this round", opponent))
     }
-    err = b.Write()
-    if err != nil {
-        msg.Reply("Error writing bracket")
-        return
-    }
+    return &reply, err
 }
 
-func handleLooseRound(msg rocket.Message, args []string, user string) {
-    if len(args) != 1 {
-        msg.Reply("Enter only the bracket name")
-    }
-
-    b, err := LoadBracket(args[0])
+func handleLooseRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    var reply rocket.Message
+    err := b.LooseRound(user)
     if err != nil {
-        msg.Reply("Error loading bracket")
-        return
-    }
-
-    err = b.LooseRound(user)
-    if err != nil {
-        msg.Reply("User not found in bracket")
-        return
+        reply, _ = msg.Reply("User not found in bracket")
+        return &reply, err
     }
     opponent, _ := b.GetOpponent(user)
     if opponent == "" {
-        msg.Reply("Unable to find opponent. Please make sure they report their win")
+        reply, err = msg.Reply("Unable to find opponent. Please make sure they report their win")
     } else {
         b.WinRound(opponent)
-        msg.Reply(fmt.Sprintf("%s won this round", opponent))
+        reply, err = msg.Reply(fmt.Sprintf("@%s won this round", opponent))
     }
-    err = b.Write()
-    if err != nil {
-        msg.Reply("Error writing bracket")
-        return
-    }
+    return &reply, err
 }
 
-func handleSetScore(msg rocket.Message, args []string, user string) {
-    if len(args) != 2 {
-        msg.Reply("Enter only the bracket name and the score (e.g. 2-1)")
-        return
+func handleSetScore(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    if len(args) != 1 {
+        reply, err := msg.Reply("Enter only the bracket name and the score (e.g. 2-1)")
+        return &reply, err
     }
 
-    scoreStr := strings.Split(args[1], "-")
+    scoreStr := strings.Split(args[0], "-")
     if len(scoreStr) != 2 {
-        msg.Reply("Invalid score format (example format: 2-1)")
-        return
+        reply, err := msg.Reply("Invalid score format (example format: 2-1)")
+        return &reply, err
     }
 
     wins, _ := strconv.Atoi(scoreStr[0])
     losses, _ := strconv.Atoi(scoreStr[1])
 
-    b, err := LoadBracket(args[0])
-    if err != nil {
-        msg.Reply("Error loading bracket")
-        return
-    }
-
     b.SetScore(user, wins, losses)
 
-    err = b.Write()
-    if err != nil {
-        msg.Reply("Error writing bracket")
-        return
-    }
-
     msg.React(":thumbsup:")
+    return nil, nil
 }
 
-func handleDrop(msg rocket.Message, args []string, user string) {
+func handleDrop(msg rocket.Message, args []string, user string, handler commandHandler) {
     msg.Reply("unimplemented")
 }
 
-func handleShow(msg rocket.Message, args []string, user string) {
-    if len(args) != 1 {
-        msg.Reply("Enter only the bracket name")
-        return
+func handleShow(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    if len(b.Rounds) == 0 {
+        msg.Reply("The bracket has not been closed yet")
+        return nil, errors.New("Do not write")
     }
-
-    b, err := LoadBracket(args[0])
-    if err != nil {
-        msg.Reply("Error loading bracket")
-        return
-    }
-
     text := "```\n" + b.Draw() + "\n```\n"
     incompletePlayers := b.RoundIncompletePlayers()
     for x := 0 ; x < len(incompletePlayers) ; x++ {
@@ -669,9 +615,10 @@ func handleShow(msg rocket.Message, args []string, user string) {
         }
     }
     msg.Reply(text)
+    return nil, errors.New("Do not write")
 }
 
-func handleDelete(msg rocket.Message, args []string, user string) {
+func handleDelete(msg rocket.Message, args []string, user string, handler commandHandler) {
     for _, bracket := range args {
         err := os.Remove(bracket + ".yml")
         if err != nil {
@@ -682,7 +629,7 @@ func handleDelete(msg rocket.Message, args []string, user string) {
     }
 }
 
-func handleList(msg rocket.Message, args []string, user string) {
+func handleList(msg rocket.Message, args []string, user string, handler commandHandler) {
     files, err := ioutil.ReadDir("./")
     if err != nil {
         msg.Reply(fmt.Sprintf("Error listing files\n```\n%s\n```", err))
@@ -698,26 +645,10 @@ func handleList(msg rocket.Message, args []string, user string) {
     msg.Reply(fmt.Sprintf("```\n%s\n```",strings.Join(bracketNames, "\n")))
 }
 
-func handleClear(msg rocket.Message, args []string, user string) {
-    switch {
-    case len(args) < 1:
-        msg.Reply("Which brackets do you want to clear?")
-    default:
-        for _, bName := range args {
-            b, err := LoadBracket(bName)
-            if err != nil {
-                msg.Reply(fmt.Sprintf("%s does not exist", bName))
-                continue
-            }
-            b.Rounds = b.Rounds[:0]
-            err = b.Write()
-            if err != nil {
-                msg.Reply("Unable to clear " + bName)
-                continue
-            }
-            msg.Reply(bName + " cleared.")
-        }
-    }
+func handleClear(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    b.Rounds = b.Rounds[:0]
+    reply, err := msg.Reply(b.Name + " cleared.")
+    return &reply, err
 }
 
 func messageDotsTicker(msg rocket.Message, update chan string) {
