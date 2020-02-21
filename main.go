@@ -60,17 +60,22 @@ var commands = map[string]commandHandler {
     "dump": commandHandler{
         usage: "<bracket name>",
         description: "Dump the internal bracket file",
-        handler: handleDump,
+        handler: handleRMWFunc(handleDump, true),
     },
     "promote": commandHandler{
         usage: "<bracket name>",
         description: "Create a new sign up message",
-        handler: handlePromote,
+        handler: handleRMWFunc(handlePromote, true),
+    },
+    "describe": commandHandler{
+        usage: "<bracket name>",
+        description: "Create a new sign up message",
+        handler: handleRMWFunc(handleDescribe, true),
     },
     "close": commandHandler{
         usage: "<bracket name>",
         description: "Close bracket sign ups",
-        handler: handleRMWFunc(handleClose),
+        handler: handleRMWFunc(handleClose, true),
     },
     "delete": commandHandler{
         usage: "<bracket name>",
@@ -85,42 +90,42 @@ var commands = map[string]commandHandler {
     "signup": commandHandler{
         usage: "<bracket name>",
         description: "Signup for a bracket",
-        handler: handleSignup,
+        handler: handleRMWFunc(handleSignup, true),
     },
     "clear": commandHandler{
         usage: "<bracket name>",
         description: "Clear the bracket information",
-        handler: handleRMWFunc(handleClear),
+        handler: handleRMWFunc(handleClear, true),
     },
     "win-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a won round",
-        handler: handleRMWFunc(handleWinRound),
+        handler: handleRMWFunc(handleWinRound, true),
     },
     "loose-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a lost round",
-        handler: handleRMWFunc(handleLooseRound),
+        handler: handleRMWFunc(handleLooseRound, true),
     },
     "drop": commandHandler{
         usage: "<bracket name>",
         description: "Drop out of a bracket",
-        handler: handleDrop,
+        handler: handleRMWFunc(handleDrop, true),
     },
     "show": commandHandler{
         usage: "<bracket name>",
         description: "Show the state of the bracket",
-        handler: handleRMWFunc(handleShow),
+        handler: handleRMWFunc(handleShow, true),
     },
     "set-score": commandHandler{
         usage: "<bracket name> <wins-losses>",
         description: "Adjust your score for an inaccuracies",
-        handler: handleRMWFunc(handleSetScore),
+        handler: handleRMWFunc(handleSetScore, true),
     },
     "new-round": commandHandler{
         usage: "<bracket name>",
         description: "Force a new round",
-        handler: handleRMWFunc(handleNewRound),
+        handler: handleRMWFunc(handleNewRound, true),
     },
 }
 
@@ -228,6 +233,54 @@ func (b *bracket) Draw() string {
     return drawing
 }
 
+func (b *bracket) CompileContestants(rock *rocket.RocketCon) {
+    // Collect all users
+    for _, signUpMid := range b.SignUpMessages {
+        // Needs a timer otherwise it will be blocked
+        <- time.After(time.Second)
+        signUpMsg, err := rock.RequestMessage(signUpMid)
+        if err != nil {
+            continue
+        }
+        for _, rUsers := range signUpMsg.Reactions {
+            b.Contestants = append(b.Contestants, rUsers...)
+        }
+    }
+
+    // Filter to only be unique users
+    for x := 0 ; x < len(b.Contestants); x++ {
+        for y := x+1 ; y < len(b.Contestants); y++ {
+            if b.Contestants[x] == b.Contestants[y] {
+                b.Contestants[y] = b.Contestants[len(b.Contestants)-1]
+                b.Contestants = b.Contestants[:len(b.Contestants)-1]
+                y--
+            }
+        }
+    }
+}
+
+func (b *bracket) Close(rock *rocket.RocketCon) {
+    b.CompileContestants(rock)
+    // Randomize the whole list of contestants
+    perm := rand.Perm(len(b.Contestants))
+    for i, v := range perm {
+        b.Contestants[v], b.Contestants[i] = b.Contestants[i], b.Contestants[v]
+    }
+
+    b.Rounds = make([]bracketRound,1)
+    for _, contestant := range b.Contestants {
+        b.Rounds[0] = append(b.Rounds[0], player{
+            Name: contestant,
+            Wins: 0,
+            Losses: 0,
+        })
+    }
+}
+
+func (b *bracket) IsClosed() bool {
+    return ! (len(b.Rounds) == 0)
+}
+
 func (b *bracket) GetOpponent(user string) (string, error) {
     for index, player := range b.Rounds[len(b.Rounds)-1] {
         if player.Name == user {
@@ -247,7 +300,8 @@ func (b *bracket) NewRound() {
     // Drop any dropped players
     for x := 0 ; x < len(b.Rounds[len(b.Rounds)-1]) ; x++ {
         if b.Rounds[len(b.Rounds)-1][x].Dropped {
-            b.Rounds[len(b.Rounds)-1] = append(b.Rounds[len(b.Rounds)-1][:x], b.Rounds[len(b.Rounds)-1][x+1:]...)
+            b.Rounds[len(b.Rounds)-1][x] = b.Rounds[len(b.Rounds)-1][len(b.Rounds[len(b.Rounds)-1])-1]
+            b.Rounds[len(b.Rounds)-1] = b.Rounds[len(b.Rounds)-1][:len(b.Rounds[len(b.Rounds)-1])-1]
         }
     }
 
@@ -294,8 +348,21 @@ func (b *bracket) SetScore(user string, wins int, losses int) error {
     return errors.New("No such player")
 }
 
+func (b *bracket) Drop(user string) error {
+    for index, player := range b.Rounds[len(b.Rounds)-1] {
+        if player.Name == user {
+            b.Rounds[len(b.Rounds)-1][index].Dropped = true
+            return nil
+        }
+    }
+    return errors.New("No such player")
+}
+
 func (b *bracket) RoundIncompletePlayers() []string {
     incompletePlayers := []string{}
+    if ! b.IsClosed(){
+        return incompletePlayers
+    }
     for _, player := range b.Rounds[len(b.Rounds)-1] {
         if len(b.Rounds) == 1 {
             if player.Wins == 0 && player.Losses == 0 {
@@ -304,7 +371,7 @@ func (b *bracket) RoundIncompletePlayers() []string {
         } else {
             for _, prevPlayer := range b.Rounds[len(b.Rounds)-2] {
                 if player.Name == prevPlayer.Name {
-                    if player.Wins == prevPlayer.Wins && prevPlayer.Losses == prevPlayer.Losses {
+                    if player.Wins == prevPlayer.Wins && player.Losses == prevPlayer.Losses {
                         incompletePlayers = append(incompletePlayers, player.Name)
                     }
                 }
@@ -314,14 +381,26 @@ func (b *bracket) RoundIncompletePlayers() []string {
     return incompletePlayers
 }
 
-func handleRMWFunc(f func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error)) (func(msg rocket.Message, args []string, user string, handler commandHandler)) {
+func handleRMWFunc(f func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error), bracketRequired bool) (func(msg rocket.Message, args []string, user string, handler commandHandler)) {
     return func(msg rocket.Message, args []string, user string, handler commandHandler) {
         if len(args) < 1 {
             msg.Reply("Not enough arguments\nSee usage")
             return
         }
-        b, _ := LoadBracket(args[0])
+        b, err := LoadBracket(args[0])
+        if err != nil {
+            if bracketRequired {
+                msg.Reply("Bracket not found")
+                return
+            }
+        }
         reply, err := f(msg, args[1:], user, handler, b)
+        if err != nil {
+            return
+        }
+        if b.IsClosed() && len(b.RoundIncompletePlayers()) == 0 {
+            reply, err = handleNewRound(msg, args[1:], user, handler, b)
+        }
         if err != nil {
             return
         }
@@ -370,74 +449,44 @@ func handleCreate(msg rocket.Message, args []string, user string, handler comman
     }
 }
 
-func handlePromote(msg rocket.Message, args []string, user string, handler commandHandler) {
-    switch {
-    case len(args) < 1:
-        msg.Reply("Which brackets do you want to promote")
-    default:
-        for _, bName := range args {
-            b, err := LoadBracket(bName)
-            if err != nil {
-                msg.Reply(fmt.Sprintf("%s does not exist", bName))
-                continue
-            }
-            reply, err := msg.Reply(fmt.Sprintf("React to this message to sign up for the %s bracket!", args[0]))
-            if err != nil {
-                break
-            }
-            b.SignUpMessages = append(b.SignUpMessages, reply.Id, msg.Id)
-            err = b.Write()
-            if err != nil {
-                reply.EditText(fmt.Sprintf("Unknown error writing %s\n```\n%s```", args[0], err))
-            }
-        }
+func handlePromote(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    reply, err := msg.Reply(fmt.Sprintf("React to this message to sign up for the %s bracket!\n```\n%s\n```", args[0], b.Description))
+    if err != nil {
+        return nil, err
     }
+    b.SignUpMessages = append(b.SignUpMessages, reply.Id, msg.Id)
+    return &reply, nil
 }
 
-func handleSignup(msg rocket.Message, args []string, user string, handler commandHandler) {
-    if len(args) < 1 {
-        msg.Reply("Which brackets do you want to sign up for?")
-        return
-    }
-    b, err := LoadBracket(args[0])
-    if err != nil {
-        msg.Reply(args[0] + " does not exist")
-    }
-    if len(b.Rounds) == 0 {
+func handleSignup(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    if !b.IsClosed() {
         b.Contestants = append(b.Contestants, user)
-        err = b.Write()
-        if err != nil {
-            msg.Reply(fmt.Sprintf("Unknown error writing %s\n```\n%s```", args[0], err))
-            return
-        }
-        msg.Reply("@" + user + " signed up for " + args[0])
+        reply, err := msg.Reply("@" + user + " signed up for " + b.Name)
+        return &reply, err
     } else {
         msg.Reply("Bracket is in progress and not accepting any more sign ups.\nYou must clear the bracket to add more users.")
+        return nil, errors.New("Do not write")
     }
 }
 
-func handleDump(msg rocket.Message, args []string, user string, handler commandHandler) {
-    switch {
-    case len(args) < 1:
-        msg.Reply("Which brackets do you want to dump?")
-    default:
-        for _, bName := range args {
-            b, err := LoadBracket(bName)
-            if err != nil {
-                msg.Reply(fmt.Sprintf("%s does not exist", bName))
-                continue
-            }
-            bytes, err := yaml.Marshal(b)
-            if err != nil {
-                msg.Reply(fmt.Sprintf("%s encountered an unexpected error\n```\n%s\n```", bName, err))
-            }
-            msg.Reply("```\n" + string(bytes) + "\n```")
-        }
+func handleDump(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    noWrite := errors.New("Do not write")
+    bytes, err := yaml.Marshal(b)
+    if err != nil {
+        msg.Reply(fmt.Sprintf("%s encountered an unexpected error\n```\n%s\n```", b.Name, err))
+        return nil, noWrite
     }
+    msg.Reply("```\n" + string(bytes) + "\n```")
+    return nil, nil
+}
+
+func handleDescribe(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    b.Description = strings.Join(args, " ")
+    return nil, nil
 }
 
 func handleClose(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
-    if len(b.Rounds) > 0 {
+    if b.IsClosed() {
         msg.Reply(args[0] + " has already been closed")
         return nil, errors.New("Do not write)")
     }
@@ -451,44 +500,8 @@ func handleClose(msg rocket.Message, args []string, user string, handler command
     defer close(updateChannel)
     go messageDotsTicker(statusMsg, updateChannel)
 
-    // Collect all users
-    for _, signUpMid := range b.SignUpMessages {
-        // Needs a timer otherwise it will be blocked
-        <- time.After(time.Second)
-        signUpMsg, err := msg.RocketCon.RequestMessage(signUpMid)
-        if err != nil {
-            continue
-        }
-        for _, rUsers := range signUpMsg.Reactions {
-            b.Contestants = append(b.Contestants, rUsers...)
-        }
-    }
-
-    // Filter to only be unique users
-    for x := 0 ; x < len(b.Contestants); x++ {
-        for y := x+1 ; y < len(b.Contestants); y++ {
-            if b.Contestants[x] == b.Contestants[y] {
-                b.Contestants[y] = b.Contestants[len(b.Contestants)-1]
-                b.Contestants = b.Contestants[:len(b.Contestants)-1]
-                y--
-            }
-        }
-    }
-
-    // Randomize the whole list of contestants
-    perm := rand.Perm(len(b.Contestants))
-    for i, v := range perm {
-        b.Contestants[v], b.Contestants[i] = b.Contestants[i], b.Contestants[v]
-    }
-
-    b.Rounds = make([]bracketRound,1)
-    for _, contestant := range b.Contestants {
-        b.Rounds[0] = append(b.Rounds[0], player{
-            Name: contestant,
-            Wins: 0,
-            Losses: 0,
-        })
-    }
+    // Close
+    b.Close(msg.RocketCon)
 
     updateChannel <- "Revealing players"
     fancyReveal(msg, b)
@@ -496,7 +509,7 @@ func handleClose(msg rocket.Message, args []string, user string, handler command
 }
 
 func handleNewRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
-    if len(b.Rounds) == 0 {
+    if !b.IsClosed() {
         msg.Reply("Signups have not closed yet")
         return nil, errors.New("Do not write")
     }
@@ -586,35 +599,59 @@ func handleSetScore(msg rocket.Message, args []string, user string, handler comm
     return nil, nil
 }
 
-func handleDrop(msg rocket.Message, args []string, user string, handler commandHandler) {
-    msg.Reply("unimplemented")
+func handleDrop(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    err := b.Drop(user)
+    if err != nil {
+        reply, _ := msg.Reply(fmt.Sprintf("%s", err))
+        return &reply, errors.New("Do not write")
+    }
+    reply, err := handleLooseRound(msg, args, user, handler, b)
+    reply.EditText(fmt.Sprintf("%s\n%s has dropped this round.", reply.Text, user))
+    return reply, nil
 }
 
 func handleShow(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
-    if len(b.Rounds) == 0 {
-        msg.Reply("The bracket has not been closed yet")
-        return nil, errors.New("Do not write")
-    }
-    text := "```\n" + b.Draw() + "\n```\n"
-    incompletePlayers := b.RoundIncompletePlayers()
-    for x := 0 ; x < len(incompletePlayers) ; x++ {
-        opponentName, _ := b.GetOpponent(incompletePlayers[x])
-        if opponentName == "" {
-            text += fmt.Sprintf("@%s vs winner of a match and similar rank", incompletePlayers[x])
-        } else {
-            text += fmt.Sprintf("@%s vs @%s", incompletePlayers[x], opponentName)
-        }
-        text += "\n"
+    if b.IsClosed() {
+        text := fmt.Sprintf("Bracket Name: %s\n", b.Name)
+        text += fmt.Sprintf("Description: %s\n", b.Description)
+        text += fmt.Sprintf("Round: %d\n", len(b.Rounds))
+        text += "```\n" + b.Draw() + "\n```\n"
+        text += "Incomplete matches:\n"
+        incompletePlayers := b.RoundIncompletePlayers()
+        for x := 0 ; x < len(incompletePlayers) ; x++ {
+            opponentName, _ := b.GetOpponent(incompletePlayers[x])
+            if opponentName == "" {
+                text += fmt.Sprintf("@%s vs winner of a match and similar rank", incompletePlayers[x])
+            } else {
+                text += fmt.Sprintf("@%s vs @%s", incompletePlayers[x], opponentName)
+            }
+            text += "\n"
 
-        for y := x + 1 ; y < len(incompletePlayers) ; y++ {
-            if opponentName == incompletePlayers[y] {
-                incompletePlayers[y] = incompletePlayers[len(incompletePlayers)-1]
-                incompletePlayers = incompletePlayers[:len(incompletePlayers)-1]
-                continue
+            for y := x + 1 ; y < len(incompletePlayers) ; y++ {
+                if opponentName == incompletePlayers[y] {
+                    incompletePlayers[y] = incompletePlayers[len(incompletePlayers)-1]
+                    incompletePlayers = incompletePlayers[:len(incompletePlayers)-1]
+                    continue
+                }
             }
         }
+        msg.Reply(text)
+    } else {
+        statusMsg, err := msg.Reply("Collecting all users")
+        if err != nil {
+            return nil, err
+        }
+        updateChannel := make(chan string, 0)
+        defer close(updateChannel)
+        go messageDotsTicker(statusMsg, updateChannel)
+
+        b.CompileContestants(msg.RocketCon)
+        text := fmt.Sprintf("%s is currently open.\n%s\n", b.Name, b.Description)
+        text += "```\n"
+        text += strings.Join(b.Contestants, "\n")
+        text += "\n```"
+        msg.Reply(text)
     }
-    msg.Reply(text)
     return nil, errors.New("Do not write")
 }
 
