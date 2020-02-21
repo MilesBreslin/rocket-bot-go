@@ -450,7 +450,7 @@ func handleCreate(msg rocket.Message, args []string, user string, handler comman
 }
 
 func handlePromote(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
-    reply, err := msg.Reply(fmt.Sprintf("React to this message to sign up for the %s bracket!\n```\n%s\n```", args[0], b.Description))
+    reply, err := msg.Reply(fmt.Sprintf("React to this message to sign up for the %s bracket!\n```\n%s\n```", b.Name, b.Description))
     if err != nil {
         return nil, err
     }
