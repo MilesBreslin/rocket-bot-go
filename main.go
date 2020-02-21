@@ -482,6 +482,7 @@ func handleDump(msg rocket.Message, args []string, user string, handler commandH
 
 func handleDescribe(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     b.Description = strings.Join(args, " ")
+    msg.React(":thumbsup:")
     return nil, nil
 }
 
