@@ -532,7 +532,7 @@ func handleNewRound(msg rocket.Message, args []string, user string, handler comm
 func fancyReveal(msg rocket.Message, b *bracket) {
     players := b.Rounds[len(b.Rounds)-1]
     for i := 0 ; i < len(players) ; i++ {
-        <- time.After(time.Second)
+        <- time.After(5 * time.Second)
         if i % 2 == 0 {
             if i == len(players)-1 {
                 msg.Reply(fmt.Sprintf("@%s vs the winner of the above match", players[i].Name))
@@ -711,7 +711,7 @@ func messageDotsTicker(msg rocket.Message, update chan string) {
                     return
                 }
                 currentText = val
-            case <- time.After(time.Second):
+            case <- time.After(2 * time.Second):
             }
             text := currentText
             for i := 0 ; i < dots ; i++ {
