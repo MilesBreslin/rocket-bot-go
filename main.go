@@ -606,9 +606,20 @@ func handleDrop(msg rocket.Message, args []string, user string, handler commandH
         reply, _ := msg.Reply(fmt.Sprintf("%s", err))
         return &reply, errors.New("Do not write")
     }
-    reply, err := handleLooseRound(msg, args, user, handler, b)
-    reply.EditText(fmt.Sprintf("%s\n%s has dropped this round.", reply.Text, user))
-    return reply, nil
+    hasPlayed := true
+    for _, player := range b.RoundIncompletePlayers() {
+        if user == player {
+            hasPlayed = false
+        }
+    }
+    if !hasPlayed {
+        reply, _ := handleLooseRound(msg, args, user, handler, b)
+        reply.EditText(fmt.Sprintf("%s\n%s has dropped this round.", reply.Text, user))
+        return reply, nil
+    } else {
+        reply, _ := msg.Reply(fmt.Sprintf("%s has dropped this round.", user))
+        return &reply, nil
+    }
 }
 
 func handleShow(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
