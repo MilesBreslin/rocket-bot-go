@@ -532,7 +532,7 @@ func handleNewRound(msg rocket.Message, args []string, user string, handler comm
 func fancyReveal(msg rocket.Message, b *bracket) {
     players := b.Rounds[len(b.Rounds)-1]
     for i := 0 ; i < len(players) ; i++ {
-        <- time.After(time.Second)
+        <- time.After(5 * time.Second)
         if i % 2 == 0 {
             if i == len(players)-1 {
                 msg.Reply(fmt.Sprintf("@%s vs the winner of the above match", players[i].Name))
@@ -616,6 +616,10 @@ func handleShow(msg rocket.Message, args []string, user string, handler commandH
         text := fmt.Sprintf("Bracket Name: %s\n", b.Name)
         text += fmt.Sprintf("Description: %s\n", b.Description)
         text += fmt.Sprintf("Round: %d\n", len(b.Rounds))
+        
+        ircText := text
+        ircText += fmt.Sprintf("Contestants: %s\n", strings.Join(b.Contestants, ", "))
+
         text += "```\n" + b.Draw() + "\n```\n"
         text += "Incomplete matches:\n"
         incompletePlayers := b.RoundIncompletePlayers()
@@ -636,7 +640,13 @@ func handleShow(msg rocket.Message, args []string, user string, handler commandH
                 }
             }
         }
-        msg.Reply(text)
+
+        ircText += fmt.Sprintf("Incomplete Players: %s", strings.Join(incompletePlayers, ", "))
+
+        reply, err := msg.Reply(ircText)
+        if err == nil {
+            reply.EditText(text)
+        }
     } else {
         statusMsg, err := msg.Reply("Collecting all users")
         if err != nil {
@@ -647,11 +657,18 @@ func handleShow(msg rocket.Message, args []string, user string, handler commandH
         go messageDotsTicker(statusMsg, updateChannel)
 
         b.CompileContestants(msg.RocketCon)
-        text := fmt.Sprintf("%s is currently open.\n%s\n", b.Name, b.Description)
+        text := fmt.Sprintf("%s is currently open.\n", b.Name)
+        ircText := text
+        ircText += fmt.Sprintf("Description: %s\n", b.Description)
+        text += fmt.Sprintf("```\n%s\n```\n", b.Description)
+        ircText += fmt.Sprintf("Contestants: %s\n", strings.Join(b.Contestants, ", "))
         text += "```\n"
         text += strings.Join(b.Contestants, "\n")
         text += "\n```"
-        msg.Reply(text)
+        reply, err := msg.Reply(ircText)
+        if err == nil {
+            reply.EditText(text)
+        }
     }
     return nil, errors.New("Do not write")
 }
