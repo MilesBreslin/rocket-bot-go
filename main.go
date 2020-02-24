@@ -700,7 +700,7 @@ func messageDotsTicker(msg rocket.Message, update chan string) {
                     return
                 }
                 currentText = val
-            case <- time.After(time.Second):
+            case <- time.After(2 * time.Second):
             }
             text := currentText
             for i := 0 ; i < dots ; i++ {
