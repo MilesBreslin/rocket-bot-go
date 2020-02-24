@@ -102,7 +102,7 @@ var commands = map[string]commandHandler {
         description: "Report a won round",
         handler: handleRMWFunc(handleWinRound, true),
     },
-    "loose-round": commandHandler{
+    "lose-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a lost round",
         handler: handleRMWFunc(handleLooseRound, true),
