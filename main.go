@@ -501,7 +501,7 @@ func handleDescribe(msg rocket.Message, args []string, user string, handler comm
 
 func handleClose(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     if b.IsClosed() {
-        msg.Reply(args[0] + " has already been closed")
+        msg.Reply(b.Name + " has already been closed")
         return nil, errors.New("Do not write)")
     }
 
