@@ -105,7 +105,7 @@ var commands = map[string]commandHandler {
     "lose-round": commandHandler{
         usage: "<bracket name>",
         description: "Report a lost round",
-        handler: handleRMWFunc(handleLooseRound, true),
+        handler: handleRMWFunc(handleLoseRound, true),
     },
     "drop": commandHandler{
         usage: "<bracket name>",
@@ -178,18 +178,23 @@ func main() {
                 args := strings.Split(msg.GetNotAddressedText(), " ")
                 commandName := strings.ToLower(args[0])
                 if _, ok := commands[commandName]; !ok || commandName == "usage" || commandName == "help"{
-                    reply := "```\n"
-                    reply += fmt.Sprintf("Unknown command: %s\n", args[0])
-                    reply += fmt.Sprintf("@%s <command> [arguments...] [as @USER]\n", rock.UserName)
-                    for command, handler := range commands {
-                        usage := fmt.Sprintf("%s %s", command, handler.usage)
-                        reply += usage
-                        for i := len(usage); i < LONGEST_USAGE + 5 ; i++ {
-                            reply += " "
+                    var reply string
+                    if msg.IsDirect || strings.Contains(msg.RoomName, "bot") {
+                        reply = fmt.Sprintf("Unknown command %s. To reduce spam, please view the `help` command in a *direct message or a bot channel*.", commandName)
+                    } else {
+                        reply = "```\n"
+                        reply += fmt.Sprintf("Unknown command: %s\n", commandName)
+                        reply += fmt.Sprintf("@%s <command> [arguments...] [as @USER]\n", rock.UserName)
+                        for command, handler := range commands {
+                            usage := fmt.Sprintf("%s %s", command, handler.usage)
+                            reply += usage
+                            for i := len(usage); i < LONGEST_USAGE + 5 ; i++ {
+                                reply += " "
+                            }
+                            reply += handler.description + "\n"
                         }
-                        reply += handler.description + "\n"
+                        reply += "```"
                     }
-                    reply += "```"
 
                     msg.Reply(reply)
                     return
@@ -471,13 +476,17 @@ func handleSignup(msg rocket.Message, args []string, user string, handler comman
 
 func handleDump(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     noWrite := errors.New("Do not write")
+    if ! msg.IsDirect && ! strings.Contains(msg.RoomName, "bot") {
+        msg.Reply("To reduce spam, dump command is only available in a *direct message or a bot room*.")
+        return nil, noWrite
+    }
     bytes, err := yaml.Marshal(b)
     if err != nil {
         msg.Reply(fmt.Sprintf("%s encountered an unexpected error\n```\n%s\n```", b.Name, err))
         return nil, noWrite
     }
     msg.Reply("```\n" + string(bytes) + "\n```")
-    return nil, nil
+    return nil, noWrite
 }
 
 func handleDescribe(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
@@ -557,12 +566,12 @@ func handleWinRound(msg rocket.Message, args []string, user string, handler comm
         reply, err = msg.Reply("Unable to find opponent. Please make sure they report their loss")
     } else {
         b.LooseRound(opponent)
-        reply, err = msg.Reply(fmt.Sprintf("%s lost this round", opponent))
+        reply, err = msg.Reply(fmt.Sprintf("@%s lost this round", opponent))
     }
     return &reply, err
 }
 
-func handleLooseRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+func handleLoseRound(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
     var reply rocket.Message
     err := b.LooseRound(user)
     if err != nil {
@@ -613,7 +622,7 @@ func handleDrop(msg rocket.Message, args []string, user string, handler commandH
         }
     }
     if !hasPlayed {
-        reply, _ := handleLooseRound(msg, args, user, handler, b)
+        reply, _ := handleLoseRound(msg, args, user, handler, b)
         reply.EditText(fmt.Sprintf("%s\n%s has dropped this round.", reply.Text, user))
         return reply, nil
     } else {
@@ -623,19 +632,29 @@ func handleDrop(msg rocket.Message, args []string, user string, handler commandH
 }
 
 func handleShow(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
+    shouldSpam := false
+    if len(args) > 0 && args[0] == "--spam" {
+        shouldSpam = true
+    }
     if b.IsClosed() {
         text := fmt.Sprintf("Bracket Name: %s\n", b.Name)
         text += fmt.Sprintf("Description: %s\n", b.Description)
         text += fmt.Sprintf("Round: %d\n", len(b.Rounds))
-        text += "```\n" + b.Draw() + "\n```\n"
+        if msg.IsDirect {
+            text += "```\n" + b.Draw() + "\n```\n"
+        }
+        namePrefix := ""
+        if msg.IsDirect || shouldSpam {
+            namePrefix = "@"
+        }
         text += "Incomplete matches:\n"
         incompletePlayers := b.RoundIncompletePlayers()
         for x := 0 ; x < len(incompletePlayers) ; x++ {
             opponentName, _ := b.GetOpponent(incompletePlayers[x])
             if opponentName == "" {
-                text += fmt.Sprintf("@%s vs winner of a match and similar rank", incompletePlayers[x])
+                text += fmt.Sprintf("%s vs winner of a match and similar rank", namePrefix + incompletePlayers[x])
             } else {
-                text += fmt.Sprintf("@%s vs @%s", incompletePlayers[x], opponentName)
+                text += fmt.Sprintf("%s vs %s", namePrefix + incompletePlayers[x], namePrefix + opponentName)
             }
             text += "\n"
 
@@ -701,6 +720,7 @@ func handleClear(msg rocket.Message, args []string, user string, handler command
 }
 
 func messageDotsTicker(msg rocket.Message, update chan string) {
+    defer msg.SetIsTyping(false)
     currentText := msg.Text
     for {
         for _, dots := range []int{1,2,3,0} {
@@ -713,11 +733,14 @@ func messageDotsTicker(msg rocket.Message, update chan string) {
                 currentText = val
             case <- time.After(2 * time.Second):
             }
-            text := currentText
-            for i := 0 ; i < dots ; i++ {
-                text += "."
+            msg.SetIsTyping(true)
+            if ! msg.IsDirect && ! strings.Contains(msg.RoomName, "bot") {
+                text := currentText
+                for i := 0 ; i < dots ; i++ {
+                    text += "."
+                }
+                msg.EditText(text)
             }
-            msg.EditText(text)
         }
     }
 }
