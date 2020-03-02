@@ -400,7 +400,10 @@ var commands = map[string]commandHandler {
             for _, playerName := range incomplete {
                 <- time.After(2 * time.Second)
                 updateChannel <- "Spamming @" + playerName
-                msg.RocketCon.DM(playerName, fmt.Sprintf("@%s is reminding you to complete your round.\n%s", msg.UserName, spamMsg))
+                _, err := msg.RocketCon.DM(playerName, fmt.Sprintf("@%s is reminding you to complete your round.\n%s", msg.UserName, spamMsg))
+                if err != nil {
+                    msg.Reply("Failed to DM @" + msg.UserName)
+                }
             }
         })),
     },
