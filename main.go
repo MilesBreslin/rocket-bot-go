@@ -361,6 +361,49 @@ var commands = map[string]commandHandler {
             msg.Reply("https://github.com/MilesBreslin/rocket-bot-go/tree/bracket_bot")
         },
     },
+    "spam-incomplete": commandHandler{
+        usage: "<bracket name> <message>",
+        description: "Spam players that haven't completed their rounds",
+        handler: quarantineCommand(handleROFunc(func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) {
+            if !b.IsClosed() {
+                msg.Reply("Bracket is not closed!")
+                return
+            }
+
+            incomplete := b.RoundIncompletePlayers()
+            spamMsg := strings.Join(args, " ")
+            template := spamMsg + "\nReally? If not deleted in %d seconds, the following will be spammed:\n" + strings.Join(incomplete, ", ")
+            countDown := 10
+            confirmation, err := msg.Reply(fmt.Sprintf(template, countDown))
+            if err != nil {
+                return
+            }
+            for ; countDown > 0 ; countDown-- {
+                <- time.After(time.Second)
+                confirmation.EditText(fmt.Sprintf(template, countDown))
+            }
+            _, err = msg.RocketCon.RequestMessage(msg.Id)
+            if err != nil {
+                msg.Reply("Spam cancelled")
+                return
+            }
+
+            // Send Status Message
+            statusMsg, err := msg.Reply("Spamming")
+            if err != nil {
+                return
+            }
+            updateChannel := make(chan string, 0)
+            defer close(updateChannel)
+            go messageDotsTicker(statusMsg, updateChannel)
+
+            for _, playerName := range incomplete {
+                <- time.After(2 * time.Second)
+                updateChannel <- "Spamming @" + playerName
+                msg.RocketCon.DM(playerName, fmt.Sprintf("@%s is reminding you to complete your round.\n%s", msg.UserName, spamMsg))
+            }
+        })),
+    },
 }
 
 //////////////////
@@ -419,24 +462,21 @@ func main() {
                 commandName := strings.ToLower(args[0])
                 if _, ok := commands[commandName]; !ok || commandName == "usage" || commandName == "help"{
                     var reply string
-                    if msg.IsDirect || strings.Contains(msg.RoomName, "bot") {
-                        reply = fmt.Sprintf("Unknown command %s. To reduce spam, please view the `help` command in a *direct message or a bot channel*.", commandName)
-                    } else {
-                        reply = "```\n"
-                        reply += fmt.Sprintf("Unknown command: %s\n", commandName)
-                        reply += fmt.Sprintf("@%s <command> [arguments...] [as @USER]\n", rock.UserName)
-                        for command, handler := range commands {
-                            usage := fmt.Sprintf("%s %s", command, handler.usage)
-                            reply += usage
-                            for i := len(usage); i < LONGEST_USAGE + 5 ; i++ {
-                                reply += " "
-                            }
-                            reply += handler.description + "\n"
+                    reply = "```\n"
+                    reply += fmt.Sprintf("Unknown command: %s\n", commandName)
+                    reply += fmt.Sprintf("@%s <command> [arguments...] [as @USER]\n", rock.UserName)
+                    for command, handler := range commands {
+                        usage := fmt.Sprintf("%s %s", command, handler.usage)
+                        reply += usage
+                        for i := len(usage); i < LONGEST_USAGE + 5 ; i++ {
+                            reply += " "
                         }
-                        reply += "```"
+                        reply += handler.description + "\n"
                     }
+                    reply += "```"
 
-                    msg.Reply(reply)
+                    msg.DM(reply)
+                    msg.React(":question:")
                     return
                 }
                 user := msg.UserName
@@ -462,7 +502,8 @@ func quarantineCommand(f func(msg rocket.Message, args []string, user string, ha
             if strings.HasSuffix(args[0], "spam") {
                 f(msg, args[1:], user, handler)
             } else {
-                msg.Reply(fmt.Sprintf("This command is quarantined from general channels to reduce spam. Please use it in a bot room or a direct message."))
+                msg.React(":no_entry:")
+                msg.DM(fmt.Sprintf("%s\nThe above command is banned from general rooms reduce channel spam. Please run it here instead.",msg.Text))
             }
         }
     }
