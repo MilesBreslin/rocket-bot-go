@@ -207,7 +207,7 @@ func (msg *Message) SetIsTyping(typing bool) (error) {
         "method": "stream-notify-room",
         "params": []interface{} {
             msg.RoomId+"/typing",
-            msg.RocketCon.UserName,
+            msg.RocketCon.DisplayName,
             typing,
         },
     }
