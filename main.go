@@ -655,13 +655,14 @@ func (b *bracket) HasPlayed(user string) (bool) {
 }
 
 func (b *bracket) GetOpponent(user string) (string, error) {
-    for index, player := range b.Rounds[len(b.Rounds)-1] {
+    r := b.Rounds[len(b.Rounds)-1]
+    for index, player := range r {
         if player.Name == user {
             opponentIndex := index - 1 + ((1 - (index % 2)) * 2)
-            if opponentIndex > len(b.Rounds[len(b.Rounds)-1])-1 {
-                opponentA := b.Rounds[len(b.Rounds)-1][index-1]
-                opponentB := b.Rounds[len(b.Rounds)-1][index-2]
-                if b.HasPlayed(b.Rounds[len(b.Rounds)-1][index-1].Name) {
+            if opponentIndex > len(r)-1 {
+                opponentA := r[index-1]
+                opponentB := r[index-2]
+                if b.HasPlayed(r[index-1].Name) {
                     if opponentA.Wins > opponentB.Wins {
                         return opponentA.Name, nil
                     } else {
@@ -670,10 +671,10 @@ func (b *bracket) GetOpponent(user string) (string, error) {
                 }
                 return fmt.Sprintf("Winner of (%s vs %s)", opponentA.Name, opponentB.Name), nil
             }
-            if opponentIndex > len(b.Rounds[len(b.Rounds)-1])-3 && b.HasPlayed(user) {
-                return b.Rounds[len(b.Rounds)-1][len(b.Rounds[len(b.Rounds)-1])-1].Name, nil
+            if b.HasPlayed(user) && b.GetOpponent(r[len(r)-1].Name) == user {
+                return r[len(r)-1].Name, nil
             }
-            return b.Rounds[len(b.Rounds)-1][opponentIndex].Name, nil
+            return r[opponentIndex].Name, nil
         }
     }
     return "", errors.New("No such player")
