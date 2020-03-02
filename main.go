@@ -380,10 +380,12 @@ var commands = map[string]commandHandler {
             if err != nil {
                 return
             }
-            for ; countDown > 0 ; countDown-- {
+            for ; countDown >= 0 ; countDown-- {
                 <- time.After(time.Second)
                 confirmation.EditText(fmt.Sprintf(template, countDown))
             }
+            <- time.After(time.Second)
+            confirmation.EditText(spamMsg + "\nSending to: " + strings.Join(incomplete, ", "))
             checkedMsg, err := msg.RocketCon.RequestMessage(msg.Id)
             if err != nil || len(checkedMsg.Reactions) != 1 || len(checkedMsg.Reactions[":x:"]) != 1{
                 msg.Reply("Spam cancelled")
