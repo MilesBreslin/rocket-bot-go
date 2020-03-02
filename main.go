@@ -281,9 +281,9 @@ var commands = map[string]commandHandler {
                 shouldSpam = true
             }
             if b.IsClosed() {
-                text := fmt.Sprintf("Bracket Name: %s\n", b.Name)
-                text += fmt.Sprintf("Description: %s\n", b.Description)
-                text += fmt.Sprintf("Round: %d\n", len(b.Rounds))
+                text := fmt.Sprintf("**Bracket Name:** %s\n", b.Name)
+                text += fmt.Sprintf("**Description:** %s\n", b.Description)
+                text += fmt.Sprintf("**Round:** %d\n", len(b.Rounds))
                 if msg.IsDirect {
                     text += "```\n" + b.Draw() + "\n```\n"
                 }
@@ -291,7 +291,7 @@ var commands = map[string]commandHandler {
                 if msg.IsDirect || shouldSpam {
                     namePrefix = "@"
                 }
-                text += "Incomplete matches:\n"
+                text += "**Incomplete matches:**\n"
                 incompletePlayers := b.RoundIncompletePlayers()
                 for x := 0 ; x < len(incompletePlayers) ; x++ {
                     opponentName, _ := b.GetOpponent(incompletePlayers[x])
@@ -321,7 +321,7 @@ var commands = map[string]commandHandler {
                 go messageDotsTicker(statusMsg, updateChannel)
 
                 b.CompileContestants(msg.RocketCon)
-                msg.Reply(fmt.Sprintf("%s signups are open.\n**Description:** %s\n**Contestants:** %s", b.Name, b.Description, strings.Join(b.Contestants, ", ")))
+                msg.Reply(fmt.Sprintf("%s signups are **open**.\n**Description:** %s\n**Contestants:** %s", b.Name, b.Description, strings.Join(b.Contestants, ", ")))
             }
         }),
     },
