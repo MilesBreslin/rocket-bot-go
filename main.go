@@ -671,7 +671,7 @@ func (b *bracket) GetOpponent(user string) (string, error) {
                 }
                 return fmt.Sprintf("Winner of (%s vs %s)", opponentA.Name, opponentB.Name), nil
             }
-            if b.HasPlayed(user) && b.GetOpponent(r[len(r)-1].Name) == user {
+            if endOpponent, _ := b.GetOpponent(r[len(r)-1].Name); endOpponent == user {
                 return r[len(r)-1].Name, nil
             }
             return r[opponentIndex].Name, nil
