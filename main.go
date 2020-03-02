@@ -370,7 +370,7 @@ var commands = map[string]commandHandler {
                 return
             }
 
-            msg.React(":alarm_clock:")
+            msg.React(":x:")
 
             incomplete := b.RoundIncompletePlayers()
             spamMsg := strings.Join(args, " ")
@@ -385,7 +385,7 @@ var commands = map[string]commandHandler {
                 confirmation.EditText(fmt.Sprintf(template, countDown))
             }
             checkedMsg, err := msg.RocketCon.RequestMessage(msg.Id)
-            if err != nil || len(checkedMsg.Reactions) != 1 {
+            if err != nil || len(checkedMsg.Reactions) != 1 || len(checkedMsg.Reactions[":x:"]) != 1{
                 msg.Reply("Spam cancelled")
                 return
             }
