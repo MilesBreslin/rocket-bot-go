@@ -156,6 +156,13 @@ func (msg *Message) Reply(text string) (Message, error) {
     return msg.rocketCon.SendMessage(msg.RoomId, text)
 }
 
+func (msg *Message) DM(text string) (Message, error) {
+    if msg.IsDirect {
+        return msg.Reply(text)
+    }
+    return msg.rocketCon.DM(msg.UserName, text)
+}
+
 func (msg *Message) KickUser() {
     msg.Reply("/kick @"+msg.UserName)
 }

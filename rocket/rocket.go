@@ -562,6 +562,22 @@ func (rock *RocketCon) SendMessage(rid string, text string) (Message, error) {
     return msg, nil
 }
 
+func (rock *RocketCon) DM(username string, text string) (Message, error) {
+    obj := map[string] interface{} {
+        "method": "createDirectMessage",
+        "params": []string {
+            username,
+        },
+    }
+
+    reply, err := rock.runMethod(obj)
+    if err != nil {
+        return Message{}, err
+    }
+    rid := reply["result"].(map[string] interface{})["rid"].(string)
+    return rock.SendMessage(rid, text)
+}
+
 func (rock *RocketCon) React(mid string, emoji string) error {
     reaction := map[string] interface{} {
         "method": "setReaction",
