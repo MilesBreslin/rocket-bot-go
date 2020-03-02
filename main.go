@@ -260,13 +260,7 @@ var commands = map[string]commandHandler {
             if err != nil {
                 return nil, ERR_DO_NOT_WRITE
             }
-            hasPlayed := true
-            for _, player := range b.RoundIncompletePlayers() {
-                if user == player {
-                    hasPlayed = false
-                }
-            }
-            if ! hasPlayed {
+            if ! b.HasPlayed(user) {
                 b.LooseRound(user)
                 opponent, _ := b.GetOpponent(user)
                 if opponent != "" {
@@ -651,12 +645,30 @@ func (b *bracket) IsClosed() bool {
     return ! (len(b.Rounds) == 0)
 }
 
+func (b *bracket) HasPlayed(user string) (bool) {
+    isIncomplete := false
+    incompletePlayers := b.RoundIncompletePlayers()
+    for _, i := range incompletePlayers {
+        isIncomplete = isIncomplete || (i == user)
+    }
+    return !isIncomplete
+}
+
 func (b *bracket) GetOpponent(user string) (string, error) {
     for index, player := range b.Rounds[len(b.Rounds)-1] {
         if player.Name == user {
             opponentIndex := index - 1 + ((1 - (index % 2)) * 2)
             if opponentIndex > len(b.Rounds[len(b.Rounds)-1])-1 {
-                return "", nil
+                opponentA := b.Rounds[len(b.Rounds)-1][index-1]
+                opponentB := b.Rounds[len(b.Rounds)-1][index-2]
+                if b.HasPlayed(b.Rounds[len(b.Rounds)-1][index-1].Name) {
+                    if opponentA.Wins > opponentB.Wins {
+                        return opponentA.Name, nil
+                    } else {
+                        return opponentB.Name, nil
+                    }
+                }
+                return fmt.Sprintf("Winner of (%s vs %s)", opponentA.Name, opponentB.Name), nil
             }
             return b.Rounds[len(b.Rounds)-1][opponentIndex].Name, nil
         }
