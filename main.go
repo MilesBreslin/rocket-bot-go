@@ -402,7 +402,7 @@ var commands = map[string]commandHandler {
                 updateChannel <- "Spamming @" + playerName
                 _, err := msg.RocketCon.DM(playerName, fmt.Sprintf("@%s is reminding you to complete your round.\n%s", msg.UserName, spamMsg))
                 if err != nil {
-                    msg.Reply("Failed to DM @" + msg.UserName)
+                    msg.Reply("Failed to DM @" + playerName)
                 }
             }
         })),
