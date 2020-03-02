@@ -407,6 +407,22 @@ var commands = map[string]commandHandler {
             }
         })),
     },
+    "get-opponent": commandHandler{
+        usage: "<bracket name>",
+        description: "Display who your opponent is",
+        handler: handleROFunc(func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) {
+            if ! b.IsClosed() {
+                msg.Reply("The bracket is not closed yet!")
+                return
+            }
+            opponent, _ := b.GetOpponent(user)
+            prefix := ""
+            if msg.IsDirect {
+                prefix = "@"
+            }
+            msg.Reply(fmt.Sprintf("**Round %d**: %s vs %s", prefix + user, prefix + opponent))
+        }),
+    },
 }
 
 //////////////////
