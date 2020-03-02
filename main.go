@@ -670,6 +670,9 @@ func (b *bracket) GetOpponent(user string) (string, error) {
                 }
                 return fmt.Sprintf("Winner of (%s vs %s)", opponentA.Name, opponentB.Name), nil
             }
+            if opponentIndex > len(b.Rounds[len(b.Rounds)-1])-3 && b.HasPlayed(user) {
+                return b.Rounds[len(b.Rounds)-1][len(b.Rounds[len(b.Rounds)-1])-1].Name, nil
+            }
             return b.Rounds[len(b.Rounds)-1][opponentIndex].Name, nil
         }
     }
