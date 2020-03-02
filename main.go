@@ -738,8 +738,10 @@ func (b *bracket) GetOpponent(user string) (string, error) {
                 }
                 return fmt.Sprintf("Winner of (%s vs %s)", opponentA.Name, opponentB.Name), nil
             }
-            if endOpponent, _ := b.GetOpponent(r[len(r)-1].Name); endOpponent == user {
-                return r[len(r)-1].Name, nil
+            if index > len(r) - 3 {
+                if endOpponent, _ := b.GetOpponent(r[len(r)-1].Name); endOpponent == user {
+                    return r[len(r)-1].Name, nil
+                }
             }
             return r[opponentIndex].Name, nil
         }
