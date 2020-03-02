@@ -420,7 +420,7 @@ var commands = map[string]commandHandler {
             if msg.IsDirect {
                 prefix = "@"
             }
-            msg.Reply(fmt.Sprintf("**Round %d**: %s vs %s", prefix + user, prefix + opponent))
+            msg.Reply(fmt.Sprintf("**Round %d**: %s vs %s", len(b.Rounds), prefix + user, prefix + opponent))
         }),
     },
 }
