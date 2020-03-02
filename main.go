@@ -224,7 +224,7 @@ var commands = map[string]commandHandler {
             }
 
             opponent, _ := b.GetOpponent(user)
-            if opponent == "" {
+            if opponent == "" || strings.Contains(opponent, " ") {
                 reply, err = msg.Reply("Unable to find opponent. Please make sure they report their loss")
             } else {
                 b.LooseRound(opponent)
@@ -243,7 +243,7 @@ var commands = map[string]commandHandler {
                 return nil, err
             }
             opponent, _ := b.GetOpponent(user)
-            if opponent == "" {
+            if opponent == "" || strings.Contains(opponent, " ") {
                 reply, err = msg.Reply("Unable to find opponent. Please make sure they report their win")
             } else {
                 b.WinRound(opponent)
@@ -263,7 +263,7 @@ var commands = map[string]commandHandler {
             if ! b.HasPlayed(user) {
                 b.LooseRound(user)
                 opponent, _ := b.GetOpponent(user)
-                if opponent != "" {
+                if strings.Contains(opponent, " ") {
                     b.WinRound(opponent)
                     msg.Reply(opponent + " has won this round by default.")
                 }
