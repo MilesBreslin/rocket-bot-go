@@ -554,16 +554,16 @@ func handleRMWFunc(f func(msg rocket.Message, args []string, user string, handle
 
 func fancyReveal(msg rocket.Message, b *bracket) {
     players := b.Rounds[len(b.Rounds)-1]
-    for i := 0 ; i < len(players) ; i++ {
-        <- time.After(5 * time.Second)
-        if i % 2 == 0 {
-            if i == len(players)-1 {
-                msg.Reply(fmt.Sprintf("@%s vs the winner of the above match", players[i].Name))
-            }
-        } else {
-            opponent, _ := b.GetOpponent(players[i].Name)
-            msg.Reply(fmt.Sprintf("@%s vs @%s", players[i].Name, opponent))
-        }
+    for i := 0 ; i < len(players) ; i+=2 {
+        <- time.After(2 * time.Second)
+        opponent, _ := b.GetOpponent(players[i].Name)
+        matchUp := fmt.Sprintf("@%s vs @%s", players[i].Name, opponent)
+        status := fmt.Sprintf("**%s**\n**Round %d**\n%s", b.Name, len(b.Rounds), matchUp)
+        msg.Reply(matchUp)
+        <- time.After(2 * time.Second)
+        msg.RocketCon.DM(players[i].Name, status)
+        <- time.After(2 * time.Second)
+        msg.RocketCon.DM(opponent, status)
     }
 }
 
