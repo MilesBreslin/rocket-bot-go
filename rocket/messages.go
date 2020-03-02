@@ -160,7 +160,7 @@ func (msg *Message) DM(text string) (Message, error) {
     if msg.IsDirect {
         return msg.Reply(text)
     }
-    return msg.rocketCon.DM(msg.UserName, text)
+    return msg.RocketCon.DM(msg.UserName, text)
 }
 
 func (msg *Message) KickUser() {
