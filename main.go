@@ -295,8 +295,8 @@ var commands = map[string]commandHandler {
                 incompletePlayers := b.RoundIncompletePlayers()
                 for x := 0 ; x < len(incompletePlayers) ; x++ {
                     opponentName, _ := b.GetOpponent(incompletePlayers[x])
-                    if opponentName == "" {
-                        text += fmt.Sprintf("%s vs winner of a match and similar rank", namePrefix + incompletePlayers[x])
+                    if strings.Contains(opponentName, " ") {
+                        text += fmt.Sprintf("%s vs %s", namePrefix + incompletePlayers[x], opponentName)
                     } else {
                         text += fmt.Sprintf("%s vs %s", namePrefix + incompletePlayers[x], namePrefix + opponentName)
                     }
