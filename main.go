@@ -121,7 +121,7 @@ var commands = map[string]commandHandler {
         }),
     },
     "describe": commandHandler{
-        usage: "<bracket name>",
+        usage: "<bracket name> <description>",
         description: "Set the description of the bracket",
         handler: handleRMWFunc(func(msg rocket.Message, args []string, user string, handler commandHandler, b *bracket) (*rocket.Message, error) {
             if len(args) == 0 {
@@ -370,6 +370,8 @@ var commands = map[string]commandHandler {
                 return
             }
 
+            msg.React(":alarm_clock:")
+
             incomplete := b.RoundIncompletePlayers()
             spamMsg := strings.Join(args, " ")
             template := spamMsg + "\nReally? If not deleted in %d seconds, the following will be spammed:\n" + strings.Join(incomplete, ", ")
@@ -382,8 +384,8 @@ var commands = map[string]commandHandler {
                 <- time.After(time.Second)
                 confirmation.EditText(fmt.Sprintf(template, countDown))
             }
-            _, err = msg.RocketCon.RequestMessage(msg.Id)
-            if err != nil {
+            checkedMsg, err = msg.RocketCon.RequestMessage(msg.Id)
+            if err != nil || len(checkedMsg.Reactions) == 0 {
                 msg.Reply("Spam cancelled")
                 return
             }
