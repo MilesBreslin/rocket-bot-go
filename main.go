@@ -384,7 +384,7 @@ var commands = map[string]commandHandler {
                 <- time.After(time.Second)
                 confirmation.EditText(fmt.Sprintf(template, countDown))
             }
-            checkedMsg, err = msg.RocketCon.RequestMessage(msg.Id)
+            checkedMsg, err := msg.RocketCon.RequestMessage(msg.Id)
             if err != nil || len(checkedMsg.Reactions) == 0 {
                 msg.Reply("Spam cancelled")
                 return
