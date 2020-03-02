@@ -526,6 +526,7 @@ func fancyReveal(msg rocket.Message, b *bracket) {
 func messageDotsTicker(msg rocket.Message, update chan string) {
     defer msg.SetIsTyping(false)
     currentText := msg.Text
+    msg.SetIsTyping(true)
     for {
         for _, dots := range []int{1,2,3,0} {
             select {
@@ -534,11 +535,13 @@ func messageDotsTicker(msg rocket.Message, update chan string) {
                     msg.Delete()
                     return
                 }
-                currentText = val
+                if ! msg.IsDirect && ! strings.Contains(msg.RoomName, "bot") {
+                    msg.EditText(val)
+                }
             case <- time.After(2 * time.Second):
             }
             msg.SetIsTyping(true)
-            if ! msg.IsDirect && ! strings.Contains(msg.RoomName, "bot") {
+            if msg.IsDirect || strings.Contains(msg.RoomName, "bot") {
                 text := currentText
                 for i := 0 ; i < dots ; i++ {
                     text += "."
