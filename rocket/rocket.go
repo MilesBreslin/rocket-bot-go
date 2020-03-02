@@ -19,6 +19,7 @@ import (
 type RocketCon struct {
     UserId          string
     UserName        string          `yaml:"user"`
+    DisplayName     string          `yaml:"-"`
     Password        string          `yaml:"password"`
     AuthToken       string          `yaml:"authtoken"`
     HostName        string          `yaml:"domain"`
@@ -131,6 +132,7 @@ func (rock *RocketCon) init() (error) {
     }
 
     rock.subscribeRooms()
+    rock.DisplayName, _ = rock.RequestDisplayName(rock.UserId)
     log.Println("Initialized successfully")
     return nil
 }
@@ -510,6 +512,21 @@ func (rock *RocketCon) requestMessageObj(mid string) map[string] interface{} {
         return m
     }
     return m
+}
+
+func (rock *RocketCon) RequestDisplayName(uid string) (string, error) {
+    resp := rock.restRequest("/api/v1/users.info?userId="+uid)
+    var m map[string] interface{}
+    err := json.Unmarshal(resp, &m)
+    if err != nil {
+        return "", err
+    }
+    if user, ok := m["user"]; ok {
+        if name, ok := user.(map[string]interface{})["name"]; ok {
+            return name.(string), nil
+        }
+    }
+    return "", errors.New("Some error")
 }
 
 func (rock *RocketCon) RequestMessage(mid string) (Message, error) {
