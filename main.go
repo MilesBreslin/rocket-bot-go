@@ -285,7 +285,8 @@ var commands = map[string]commandHandler {
                 text += fmt.Sprintf("**Description:** %s\n", b.Description)
                 text += fmt.Sprintf("**Round:** %d\n", len(b.Rounds))
                 if msg.IsDirect {
-                    text += "```\n" + b.Draw() + "\n```\n"
+                    text += "|Player|Wins|Losses|\n"
+                    text += b.Draw() + "\n"
                 }
                 namePrefix := ""
                 if msg.IsDirect || shouldSpam {
@@ -659,7 +660,7 @@ func (b *bracket) Draw() string {
     var drawing string
     round := b.Rounds[len(b.Rounds)-1]
     for _, player := range round {
-        drawing += fmt.Sprintf("%s: %d-%d\n", player.Name, player.Wins, player.Losses)
+        drawing += fmt.Sprintf("|%s|%d|%d|\n", player.Name, player.Wins, player.Losses)
     }
     return drawing
 }
