@@ -750,7 +750,9 @@ func (b *bracket) GetOpponent(user string) (string, error) {
 }
 
 func (b *bracket) NewRound() {
-    b.Rounds = append(b.Rounds, b.Rounds[len(b.Rounds)-1])
+    var copiedRound []player
+    copy(b.Rounds[len(b.Rounds)-1], copiedRound)
+    b.Rounds = append(b.Rounds, copiedRound)
 
     // Drop any dropped players
     for x := 0 ; x < len(b.Rounds[len(b.Rounds)-1]) ; x++ {
