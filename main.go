@@ -286,6 +286,7 @@ var commands = map[string]commandHandler {
                 text += fmt.Sprintf("**Round:** %d\n", len(b.Rounds))
                 if msg.IsDirect {
                     text += "|Player|Wins|Losses|\n"
+                    text += "|---|---|---|\n"
                     text += b.Draw() + "\n"
                 }
                 namePrefix := ""
