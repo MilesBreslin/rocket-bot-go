@@ -285,9 +285,9 @@ var commands = map[string]commandHandler {
                 text += fmt.Sprintf("**Description:** %s\n", b.Description)
                 text += fmt.Sprintf("**Round:** %d\n", len(b.Rounds))
                 if msg.IsDirect {
-                    text += "|Player|Wins|Losses|\n"
+                    text += "\n|Player|Wins|Losses|\n"
                     text += "|---|---|---|\n"
-                    text += b.Draw() + "\n"
+                    text += b.Draw() + "\n\n"
                 }
                 namePrefix := ""
                 if msg.IsDirect || shouldSpam {
