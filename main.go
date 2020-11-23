@@ -510,6 +510,28 @@ func main() {
                     args = args[:len(args)-2]
                 }
                 commands[commandName].handler(msg, args[1:], user, commands[commandName])
+            } else if msg.UserName == "Macro" && strings.Contains(strings.ToLower(msg.Text), "luigi") {
+                bracketName := "1v1-Macro-" + msg.Id
+                reply, err := msg.Reply(fmt.Sprintf("A 1v1 bracket, %s, has been created", bracketName))
+                if err != nil {
+                    return
+                }
+                b := bracket {
+                    Name: bracketName,
+                    Description: "Macro said \"luigi\", so a 1v1 bracket has been spawned",
+                    Creator: "jank",
+                    CreateMessage: msg.Id,
+                    SignUpMessages: []string{
+                        msg.Id,
+                        reply.Id,
+                    },
+                    Contestants: []string{
+                        "jank",
+                        msg.UserName,
+                    },
+                    CreatedAt: time.Now(),
+                }
+                b.write()
             }
         }()
     }
