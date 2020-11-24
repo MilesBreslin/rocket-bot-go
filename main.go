@@ -517,7 +517,7 @@ func main() {
                     return
                 }
                 b := bracket {
-                    Name: bracketName,
+                    Name: string.ToLower(bracketName),
                     Description: "Macro said \"luigi\", so a 1v1 bracket has been spawned",
                     Creator: "jank",
                     CreateMessage: msg.Id,
@@ -531,7 +531,7 @@ func main() {
                     },
                     CreatedAt: time.Now(),
                 }
-                b.write()
+                b.Write()
             }
         }()
     }
